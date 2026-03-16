@@ -1,0 +1,33 @@
+{
+  "originHash" : "5dbf6a728a4ca58d0a5b8f3020365855658fd771346f2b04c049cd0c5f3072fb",
+  "pins" : [
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
+        "version" : "1.7.0"
+      }
+    },
+    {
+      "identity" : "swift-erlang-actor-system",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/otp-interop/swift-erlang-actor-system.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "2c5eee39ebee4dcc19e0a0fc5f1f4c60ce998e58"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "0687f71944021d616d34d922343dcef086855920",
+        "version" : "600.0.1"
+      }
+    }
+  ],
+  "version" : 3
+}

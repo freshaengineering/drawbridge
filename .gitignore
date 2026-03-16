@@ -1,0 +1,33 @@
+# Elixir
+/elixir/_build/
+/elixir/deps/
+/elixir/*.ez
+/elixir/apps/*/coverdata
+*.beam
+
+# Swift
+/swift/.build/
+/swift/.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+
+# Generated
+/certs/
+*.pem
+*.key
+*.crt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Drawbridge runtime
+.drawbridge/
+erl_crash.dump

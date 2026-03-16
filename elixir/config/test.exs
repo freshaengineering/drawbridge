@@ -1,0 +1,9 @@
+import Config
+
+config :logger, level: :warning
+
+config :drawbridge_core,
+  swift_bridge: DrawbridgeCore.StubSwiftBridge
+
+config :drawbridge_proxy,
+  tls_port: 8443

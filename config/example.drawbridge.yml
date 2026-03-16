@@ -1,0 +1,51 @@
+domain: dev.local
+idle_timeout: 300
+max_containers: 8
+
+services:
+  api-b2c:
+    image: ghcr.io/org/api-b2c:latest
+    hostname: api.b2c.dev.local
+    ports:
+      - "443:4000"
+    env:
+      DATABASE_URL: "postgres://postgres.dev.local:5432/b2c"
+      REDIS_URL: "redis://redis.dev.local:6379"
+    idle_timeout: 600
+    health_check: "curl -sf http://localhost:4000/health"
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16
+    hostname: postgres.dev.local
+    ports:
+      - "5432:5432"
+    env:
+      POSTGRES_PASSWORD: dev
+    idle_timeout: 900
+
+  redis:
+    image: redis:7
+    hostname: redis.dev.local
+    ports:
+      - "6379:6379"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka.dev.local
+    ports:
+      - "9092:9092"
+    env:
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka.dev.local:9092"
+
+  elasticsearch:
+    image: elasticsearch:8.13.0
+    hostname: es.dev.local
+    ports:
+      - "9200:9200"
+    env:
+      discovery.type: single-node
+    idle_timeout: 120
+    boot_timeout: 60
