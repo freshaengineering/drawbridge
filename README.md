@@ -66,13 +66,26 @@ Non-TLS services (Postgres on 5432, Redis on 6379, etc.) are routed by port numb
 - Swift 6+
 - Apple Container CLI (`container`)
 
-### Install and build
+### Install from release
+
+```bash
+# Download the latest release
+gh release download --repo surgeventures/drawbridge -p '*.tar.gz'
+tar xzf drawbridge-*.tar.gz -C /usr/local/bin/
+```
+
+`drawbridge` and `drawbridge-agent` are now in your PATH. Run `drawbridge up` from any project with a `drawbridge.yml`.
+
+### Install from source (for drawbridge development)
 
 ```bash
 git clone https://github.com/surgeventures/drawbridge.git
 cd drawbridge
-task setup    # installs deps + builds elixir and swift
+task setup              # installs deps + builds elixir and swift
+task dev:install        # adds drawbridge to PATH via ../mise.local.toml
 ```
+
+This makes `drawbridge` available in all sibling project directories via mise.
 
 ### Configure your stack
 

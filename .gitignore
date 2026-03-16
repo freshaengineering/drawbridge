@@ -37,3 +37,7 @@ erl_crash.dump
 
 # OMC
 .omc/
+
+# Built binaries
+/elixir/apps/drawbridge_cli/drawbridge
+/dist/
