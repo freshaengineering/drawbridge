@@ -198,8 +198,8 @@ tasks:
       - cp {{.ELIXIR_DIR}}/apps/drawbridge_cli/drawbridge dist/drawbridge
       - cp {{.SWIFT_DIR}}/.build/release/DrawbridgeAgent dist/drawbridge-agent
       - chmod +x dist/drawbridge dist/drawbridge-agent
-      - cd dist && tar czf drawbridge-v{{.VERSION}}-macos-arm64.tar.gz drawbridge drawbridge-agent
-      - echo "Packaged dist/drawbridge-v{{.VERSION}}-macos-arm64.tar.gz"
+      - cd dist && tar czf drawbridge-v{{.VERSION}}-darwin-arm64.tar.gz drawbridge drawbridge-agent
+      - echo "Packaged dist/drawbridge-v{{.VERSION}}-darwin-arm64.tar.gz"
 
   version:
     desc: Print current version

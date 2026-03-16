@@ -68,13 +68,26 @@ Non-TLS services (Postgres on 5432, Redis on 6379, etc.) are routed by port numb
 
 ### Install from release
 
-```bash
-# Download the latest release
-gh release download --repo surgeventures/drawbridge -p '*.tar.gz'
-tar xzf drawbridge-*.tar.gz -C /usr/local/bin/
+Add to your project's `.mise.toml` (or global `~/.config/mise/config.toml`):
+
+```toml
+[tools]
+"ubi:surgeventures/drawbridge" = "latest"
 ```
 
-`drawbridge` and `drawbridge-agent` are now in your PATH. Run `drawbridge up` from any project with a `drawbridge.yml`.
+Then:
+
+```bash
+mise install
+```
+
+Or install directly:
+
+```bash
+mise use -g "ubi:surgeventures/drawbridge@latest"
+```
+
+This pulls the latest release binary from GitHub and adds `drawbridge` to your PATH via mise.
 
 ### Install from source (for drawbridge development)
 

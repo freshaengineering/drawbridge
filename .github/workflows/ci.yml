@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   MIX_ENV: test
@@ -16,6 +16,8 @@ env:
   OTP_VERSION: "28.2"
 
 jobs:
+  # ── Lint + Test (parallel, all pushes) ─────────────────
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -30,7 +32,7 @@ jobs:
           path: |
             elixir/deps
             elixir/_build
-          key: elixir-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
+          key: mix-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
       - run: mix deps.get
         working-directory: elixir
       - run: mix compile --warnings-as-errors
@@ -52,33 +54,50 @@ jobs:
           path: |
             elixir/deps
             elixir/_build
-          key: elixir-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
+          key: mix-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
       - run: mix deps.get
         working-directory: elixir
       - run: mix test
         working-directory: elixir
 
-  build-swift:
-    name: Build Swift (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-15]
+  # ── Version check (main only) ─────────────────────────
+
+  check-version:
+    name: Check version
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - run: swift build -c release
-        working-directory: swift
-      - uses: actions/upload-artifact@v4
         with:
-          name: drawbridge-agent-${{ matrix.os }}
-          path: swift/.build/release/DrawbridgeAgent
+          fetch-depth: 0
+      - name: Compare VERSION against latest tag
+        id: check
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-  build-elixir:
-    name: Build Elixir release (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-15]
+          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing tags — first release"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [ "v${VERSION}" != "$LATEST_TAG" ]; then
+            echo "Version changed: ${LATEST_TAG} → v${VERSION}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version unchanged (${LATEST_TAG}), skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Build (only if version changed) ───────────────────
+
+  build-escript:
+    name: Build escript (macOS)
+    runs-on: macos-15
+    needs: [lint, test, check-version]
+    if: needs.check-version.outputs.should_release == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -91,88 +110,73 @@ jobs:
         working-directory: elixir/apps/drawbridge_cli
       - uses: actions/upload-artifact@v4
         with:
-          name: drawbridge-escript-${{ matrix.os }}
+          name: drawbridge-escript
           path: elixir/apps/drawbridge_cli/drawbridge
+
+  build-swift:
+    name: Build Swift agent (macOS)
+    runs-on: macos-15
+    needs: [lint, test, check-version]
+    if: needs.check-version.outputs.should_release == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+        working-directory: swift
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drawbridge-agent
+          path: swift/.build/release/DrawbridgeAgent
+
+  # ── Release ────────────────────────────────────────────
 
   release:
     name: Release
-    needs: [lint, test, build-swift, build-elixir]
-    runs-on: macos-15
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: [build-escript, build-swift, check-version]
+    if: needs.check-version.outputs.should_release == 'true'
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Read version
-        id: version
-        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-
-      - name: Check if release exists
-        id: check
-        run: |
-          if gh release view "v${{ steps.version.outputs.version }}" > /dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Skip if release already exists
-        if: steps.check.outputs.exists == 'true'
-        run: echo "Release v${{ steps.version.outputs.version }} already exists, skipping."
-
       - name: Download artifacts
-        if: steps.check.outputs.exists == 'false'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Package release
-        if: steps.check.outputs.exists == 'false'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           mkdir -p release
-
-          # Copy escript
-          cp artifacts/drawbridge-escript-macos-15/drawbridge release/drawbridge
-          chmod +x release/drawbridge
-
-          # Copy Swift agent
-          cp artifacts/drawbridge-agent-macos-15/DrawbridgeAgent release/drawbridge-agent
-          chmod +x release/drawbridge-agent
-
-          # Create tarball
+          cp artifacts/drawbridge-escript/drawbridge release/drawbridge
+          cp artifacts/drawbridge-agent/DrawbridgeAgent release/drawbridge-agent
+          chmod +x release/drawbridge release/drawbridge-agent
           cd release
-          tar czf "../drawbridge-v${VERSION}-macos-arm64.tar.gz" drawbridge drawbridge-agent
+          tar czf "../drawbridge-v${VERSION}-darwin-arm64.tar.gz" drawbridge drawbridge-agent
 
-      - name: Upsert tag
-        if: steps.check.outputs.exists == 'false'
+      - name: Create tag
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # Delete existing tag if it exists (upsert)
-          git tag -d "v${VERSION}" 2>/dev/null || true
-          git push origin ":refs/tags/v${VERSION}" 2>/dev/null || true
-          # Create new tag pointing at HEAD
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
           git push origin "v${VERSION}"
 
-      - name: Create GitHub release
-        if: steps.check.outputs.exists == 'false'
+      - name: Extract changelog
+        id: notes
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # Extract changelog for this version
           NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} /^## \[/{found=0} found" CHANGELOG.md)
           if [ -z "$NOTES" ]; then
             NOTES="Release v${VERSION}"
           fi
+          # Write to file to avoid quoting issues
+          echo "$NOTES" > release_notes.md
 
+      - name: Create GitHub release
+        run: |
           gh release create "v${VERSION}" \
-            "drawbridge-v${VERSION}-macos-arm64.tar.gz" \
+            "drawbridge-v${VERSION}-darwin-arm64.tar.gz" \
             --title "v${VERSION}" \
-            --notes "${NOTES}"
+            --notes-file release_notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
