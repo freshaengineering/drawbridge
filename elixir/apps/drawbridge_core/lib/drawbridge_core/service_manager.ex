@@ -183,12 +183,13 @@ defmodule DrawbridgeCore.ServiceManager do
       GenServer.reply(from, {:ok, {ip, first_container_port}})
     end)
 
-    s = %{s |
-      state: :running,
-      ip: ip,
-      waiters: [],
-      active_connections: length(s.waiters),
-      started_at: System.monotonic_time(:second)
+    s = %{
+      s
+      | state: :running,
+        ip: ip,
+        waiters: [],
+        active_connections: length(s.waiters),
+        started_at: System.monotonic_time(:second)
     }
 
     {:noreply, reset_idle_timer(s)}
@@ -221,7 +222,8 @@ defmodule DrawbridgeCore.ServiceManager do
 
   # -- Private --
 
-  defp swift_bridge, do: Application.get_env(:drawbridge_core, :swift_bridge, DrawbridgeCore.SwiftBridge)
+  defp swift_bridge,
+    do: Application.get_env(:drawbridge_core, :swift_bridge, DrawbridgeCore.SwiftBridge)
 
   defp via(name), do: {:via, Registry, {@registry, {:name, name}}}
 

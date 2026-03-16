@@ -49,12 +49,13 @@ defmodule DrawbridgeCore.Config do
     with {:ok, services} <- parse_services(raw["services"] || %{}, global_idle),
          :ok <- validate_no_duplicate_hostnames(services),
          :ok <- validate_no_duplicate_host_ports(services) do
-      {:ok, %__MODULE__{
-        domain: raw["domain"] || "localhost",
-        idle_timeout: global_idle,
-        max_containers: raw["max_containers"] || 8,
-        services: services
-      }}
+      {:ok,
+       %__MODULE__{
+         domain: raw["domain"] || "localhost",
+         idle_timeout: global_idle,
+         max_containers: raw["max_containers"] || 8,
+         services: services
+       }}
     end
   end
 
@@ -70,18 +71,19 @@ defmodule DrawbridgeCore.Config do
 
   defp parse_service(name, raw, global_idle) do
     with {:ok, ports} <- parse_ports(raw["ports"] || []) do
-      {:ok, %DrawbridgeCore.Config.Service{
-        name: name,
-        image: raw["image"],
-        hostname: raw["hostname"],
-        ports: ports,
-        env: stringify_keys(raw["env"] || %{}),
-        idle_timeout: raw["idle_timeout"] || global_idle,
-        boot_timeout: raw["boot_timeout"] || 30,
-        health_check: raw["health_check"],
-        tls_backend: raw["tls_backend"] || false,
-        depends_on: raw["depends_on"] || []
-      }}
+      {:ok,
+       %DrawbridgeCore.Config.Service{
+         name: name,
+         image: raw["image"],
+         hostname: raw["hostname"],
+         ports: ports,
+         env: stringify_keys(raw["env"] || %{}),
+         idle_timeout: raw["idle_timeout"] || global_idle,
+         boot_timeout: raw["boot_timeout"] || 30,
+         health_check: raw["health_check"],
+         tls_backend: raw["tls_backend"] || false,
+         depends_on: raw["depends_on"] || []
+       }}
     end
   end
 

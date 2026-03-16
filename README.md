@@ -70,82 +70,134 @@ Non-TLS services (Postgres on 5432, Redis on 6379, etc.) are routed by port numb
 
 ```bash
 git clone https://github.com/surgeventures/drawbridge.git
-cd drawbridge/elixir
-mix deps.get && mix compile
-
-# Build the Swift agent
-cd ../swift
-swift build -c release
+cd drawbridge
+task setup    # installs deps + builds elixir and swift
 ```
 
 ### Configure your stack
 
+Copy the example config (tailored to the Fresha B2C stack):
+
 ```bash
-cd ~/your-project
-mix drawbridge.init    # generates drawbridge.yml
+cp config/example.drawbridge.yml drawbridge.yml
 ```
 
-Edit `drawbridge.yml`:
+The example maps the full B2C consumer flow — comment out whichever service you're developing locally:
 
 ```yaml
 domain: dev.local
 idle_timeout: 300
-max_containers: 8
+max_containers: 10
 
 services:
+  # Backing services
   postgres:
-    image: postgres:16
+    image: postgis/postgis:17-3.5
     hostname: postgres.dev.local
     ports:
       - "5432:5432"
     env:
       POSTGRES_PASSWORD: dev
-    idle_timeout: 900
+      POSTGRES_DB: shedul_dev
+    idle_timeout: 1800
 
   redis:
-    image: redis:7
+    image: redis:6.2
     hostname: redis.dev.local
     ports:
       - "6379:6379"
+    idle_timeout: 1800
 
-  api-b2c:
-    image: ghcr.io/org/api-b2c:latest
+  elasticsearch:
+    image: elasticsearch:9.0.3
+    hostname: es.dev.local
+    ports:
+      - "9200:9200"
+    env:
+      discovery.type: single-node
+    boot_timeout: 60
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka.dev.local
+    ports:
+      - "9092:9092"
+    env:
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka.dev.local:9092"
+
+  # B2C API Gateway (Node.js/GraphQL BFF)
+  api-gateway:
+    image: ghcr.io/surgeventures/app-b2c-api-gateway:latest
     hostname: api.b2c.dev.local
     ports:
-      - "443:4000"
+      - "443:3000"
     env:
-      DATABASE_URL: "postgres://postgres.dev.local:5432/b2c"
+      CACHE_REDIS_URL: "redis://redis.dev.local:6379"
+      B2C_USERS_GRPC_URL: "b2c-users.dev.local:50051"
+      PLATFORM_GRPC_URL: "platform.dev.local:50051"
+    depends_on: [redis]
+
+  # B2C Users (Elixir/gRPC)
+  b2c-users:
+    image: ghcr.io/surgeventures/app-b2c-users:latest
+    hostname: b2c-users.dev.local
+    ports:
+      - "50051:50051"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/b2c_users_dev"
       REDIS_URL: "redis://redis.dev.local:6379"
-    health_check: "curl -sf http://localhost:4000/health"
-    boot_timeout: 60
-    depends_on:
-      - postgres
-      - redis
+    depends_on: [postgres, redis]
+
+  # Platform / Shedul umbrella (Elixir — 27 apps)
+  platform:
+    image: ghcr.io/surgeventures/app-shedul-umbrella:latest
+    hostname: platform.dev.local
+    ports:
+      - "50052:50051"
+      - "4000:4000"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/shedul_dev"
+      REDIS_URL: "redis://redis.dev.local:6379"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    depends_on: [postgres, redis, kafka]
+
+  # Marketplace Search (Elixir — ES + Kafka)
+  marketplace-search:
+    image: ghcr.io/surgeventures/app-marketplace-search:latest
+    hostname: search.dev.local
+    ports:
+      - "50053:50051"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/marketplace_search_dev"
+      ELASTICSEARCH_URL: "http://es.dev.local:9200"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    depends_on: [postgres, elasticsearch, kafka]
 ```
 
 ### Run
 
 ```bash
 # Start the proxy (first run generates certs + configures DNS)
-mix drawbridge.up
+task up
 
-# In another terminal — this triggers postgres + redis + api-b2c to boot:
+# In another terminal — hit the B2C gateway:
+# This auto-boots: redis → api-gateway (and on first API call, postgres → b2c-users → platform)
 curl https://api.b2c.dev.local/health
 
 # Check what's running
-mix drawbridge.status
+task status
 
-# Pre-pull images for faster first boot
-mix drawbridge.pull --all
+# Pre-pull all images for faster cold starts
+task pull -- --all
 
 # Stop everything
-mix drawbridge.down
+task down
 ```
 
 ### Example session
 
 ```
-$ mix drawbridge.up
+$ task up
 [Drawbridge] Loading config from drawbridge.yml
 [CertManager] Generating root CA...
 [CertManager] CA trusted successfully
@@ -159,32 +211,60 @@ $ mix drawbridge.up
   ────────────────────────────────────────────────────────────────────────────────
   postgres            postgres.dev.local            5432:5432           sleeping
   redis               redis.dev.local               6379:6379           sleeping
-  api-b2c             api.b2c.dev.local             443:4000            sleeping
+  elasticsearch       es.dev.local                  9200:9200           sleeping
+  kafka               kafka.dev.local               9092:9092           sleeping
+  api-gateway         api.b2c.dev.local             443:3000            sleeping
+  b2c-users           b2c-users.dev.local           50051:50051         sleeping
+  platform            platform.dev.local            50052:50051         sleeping
+  marketplace-search  search.dev.local              50053:50051         sleeping
 
   Proxy running. Hit Ctrl+C to stop.
 
-# Meanwhile, in another terminal:
+# Hit the B2C gateway — this triggers a cascade of lazy boots:
 $ curl https://api.b2c.dev.local/health
-# → postgres boots (depends_on)
-# → redis boots (depends_on)
-# → api-b2c boots
-# → health check passes
-# → {"status": "ok"}
+#   → redis boots (api-gateway depends_on)
+#   → api-gateway boots
+#   → {"status": "ok"}
 
-$ mix drawbridge.status
+# Now the gateway's up. A real GraphQL query that fetches user data
+# would trigger more services:
+$ curl -X POST https://api.b2c.dev.local/graphql \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "{ me { name favourites { id } } }"}'
+#   → postgres boots (b2c-users depends_on)
+#   → b2c-users boots on :50051
+#   → gateway calls b2c-users via gRPC
+#   → {"data": {"me": {"name": "...", "favourites": [...]}}}
+
+# Only the services that were actually needed are running:
+$ task status
   Service             State       Hostname                    Ports           Conns   Uptime
   ──────────────────────────────────────────────────────────────────────────────────────────
-  postgres            running     postgres.dev.local          5432:5432       1       2m 14s
-  redis               running     redis.dev.local             6379:6379       1       2m 12s
-  api-b2c             running     api.b2c.dev.local           443:4000        0       2m 5s
+  postgres            running     postgres.dev.local          5432:5432       1       45s
+  redis               running     redis.dev.local             6379:6379       1       52s
+  elasticsearch       sleeping    es.dev.local                9200:9200       0       -
+  kafka               sleeping    kafka.dev.local             9092:9092       0       -
+  api-gateway         running     api.b2c.dev.local           443:3000        0       48s
+  b2c-users           running     b2c-users.dev.local         50051:50051     0       42s
+  platform            sleeping    platform.dev.local          50052:50051     0       -
+  marketplace-search  sleeping    search.dev.local            50053:50051     0       -
 
-# After 5 minutes of no traffic:
-$ mix drawbridge.status
+# Elasticsearch, Kafka, Platform, and Marketplace Search never booted —
+# they weren't needed. When they are, they'll start automatically.
+
+# Connect to the DB directly — Drawbridge routes :5432 by port:
+$ psql -h localhost -p 5432 -U postgres shedul_dev
+psql (17.0)
+Type "help" for help.
+shedul_dev=#
+
+# After 5 minutes idle, services sleep to free resources:
+$ task status
   Service             State       Hostname                    Ports           Conns   Uptime
   ──────────────────────────────────────────────────────────────────────────────────────────
   postgres            sleeping    postgres.dev.local          5432:5432       0       -
   redis               sleeping    redis.dev.local             6379:6379       0       -
-  api-b2c             sleeping    api.b2c.dev.local           443:4000        0       -
+  ...
 ```
 
 ## Configuration reference

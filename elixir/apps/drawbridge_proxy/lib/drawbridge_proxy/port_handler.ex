@@ -62,6 +62,7 @@ defmodule DrawbridgeProxy.PortHandler do
 
       {:wait, ref} ->
         Logger.debug("[PortHandler] waiting for container boot: #{svc}")
+
         {:next_state, :waiting_boot, %{data | wait_ref: ref},
          [{:state_timeout, @boot_wait_timeout, :boot_timeout}]}
 
@@ -79,8 +80,7 @@ defmodule DrawbridgeProxy.PortHandler do
     {:stop, :normal}
   end
 
-  def connecting(:info, {msg_error, socket, reason},
-        %{msg_error: msg_error, socket: socket}) do
+  def connecting(:info, {msg_error, socket, reason}, %{msg_error: msg_error, socket: socket}) do
     Logger.debug("[PortHandler] client error in connecting: #{inspect(reason)}")
     {:stop, :normal}
   end
@@ -112,8 +112,11 @@ defmodule DrawbridgeProxy.PortHandler do
   # ---- relaying ----
 
   # Client -> backend
-  def relaying(:info, {msg_ok, socket, chunk},
-        %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data) do
+  def relaying(
+        :info,
+        {msg_ok, socket, chunk},
+        %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data
+      ) do
     case :gen_tcp.send(backend, chunk) do
       :ok ->
         transport.setopts(socket, active: :once)
@@ -125,8 +128,11 @@ defmodule DrawbridgeProxy.PortHandler do
   end
 
   # Backend -> client
-  def relaying(:info, {:tcp, socket, chunk},
-        %{backend_socket: socket, socket: client, transport: transport} = data) do
+  def relaying(
+        :info,
+        {:tcp, socket, chunk},
+        %{backend_socket: socket, socket: client, transport: transport} = data
+      ) do
     case transport.send(client, chunk) do
       :ok ->
         :inet.setopts(socket, active: :once)
@@ -145,8 +151,7 @@ defmodule DrawbridgeProxy.PortHandler do
     close_and_stop(data)
   end
 
-  def relaying(:info, {msg_error, socket, reason},
-        %{msg_error: msg_error, socket: socket} = data) do
+  def relaying(:info, {msg_error, socket, reason}, %{msg_error: msg_error, socket: socket} = data) do
     Logger.debug("[PortHandler] client error in relay: #{inspect(reason)}")
     close_and_stop(data)
   end
@@ -172,8 +177,12 @@ defmodule DrawbridgeProxy.PortHandler do
   defp do_connect_backend(ip, port, data) do
     ip_addr = parse_ip(ip)
 
-    case :gen_tcp.connect(ip_addr, port, [:binary, active: :once, nodelay: true],
-           @backend_connect_timeout) do
+    case :gen_tcp.connect(
+           ip_addr,
+           port,
+           [:binary, active: :once, nodelay: true],
+           @backend_connect_timeout
+         ) do
       {:ok, backend_socket} ->
         :ok = data.transport.setopts(data.socket, active: :once)
         Logger.debug("[PortHandler] relaying #{data.service_name} -> #{ip}:#{port}")

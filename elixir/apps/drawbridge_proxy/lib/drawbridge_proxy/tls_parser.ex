@@ -96,7 +96,10 @@ defmodule DrawbridgeProxy.TlsParser do
 
   # SNI extension data: server_name_list_len(2) + entries...
   # Each entry: name_type(1) + name_len(2) + name(N)
-  defp parse_sni_ext(<<_list_len::16, @host_name_type, name_len::16, hostname::binary-size(name_len), _::binary>>) do
+  defp parse_sni_ext(
+         <<_list_len::16, @host_name_type, name_len::16, hostname::binary-size(name_len),
+           _::binary>>
+       ) do
     if name_len > 0 do
       {:ok, hostname}
     else

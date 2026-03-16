@@ -80,7 +80,10 @@ defmodule DrawbridgeCore.SwiftBridge do
 
   @impl true
   def handle_info({:nodedown, node}, %{node_name: node} = state) do
-    Logger.warning("[SwiftBridge] Swift node #{node} went down, reconnecting in #{@reconnect_interval}ms")
+    Logger.warning(
+      "[SwiftBridge] Swift node #{node} went down, reconnecting in #{@reconnect_interval}ms"
+    )
+
     Process.send_after(self(), :reconnect, @reconnect_interval)
     {:noreply, %{state | connected: false, port: nil}}
   end
@@ -113,9 +116,12 @@ defmodule DrawbridgeCore.SwiftBridge do
 
       binary_path ->
         args = [
-          "--node-name", to_string(state.node_name),
-          "--cookie", to_string(state.cookie),
-          "--epmd-port", "4369"
+          "--node-name",
+          to_string(state.node_name),
+          "--cookie",
+          to_string(state.cookie),
+          "--epmd-port",
+          "4369"
         ]
 
         port =
