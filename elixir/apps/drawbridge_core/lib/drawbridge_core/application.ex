@@ -3,6 +3,8 @@ defmodule DrawbridgeCore.Application do
 
   @impl true
   def start(_type, _args) do
+    DrawbridgeCore.Telemetry.setup()
+
     bridge_mod = Application.get_env(:drawbridge_core, :swift_bridge, DrawbridgeCore.JsonBridge)
 
     bridge_children =

@@ -18,6 +18,7 @@ defmodule DrawbridgeCore.ServiceManager do
     :ports,
     :idle_timer,
     :started_at,
+    :boot_started_at,
     waiters: [],
     active_connections: 0
   ]
@@ -116,7 +117,15 @@ defmodule DrawbridgeCore.ServiceManager do
   def handle_call({:request_connection, _caller_pid}, from, %{state: container_state} = s)
       when container_state in [:stopped, :not_pulled] do
     ref = make_ref()
-    s = %{s | waiters: [{from, ref} | s.waiters], state: :booting}
+    DrawbridgeCore.Telemetry.emit_boot_start(s.service.name, s.service.image)
+
+    s = %{
+      s
+      | waiters: [{from, ref} | s.waiters],
+        state: :booting,
+        boot_started_at: System.monotonic_time(:millisecond)
+    }
+
     start_container_async(s.service)
     {:noreply, s}
   end
@@ -179,6 +188,8 @@ defmodule DrawbridgeCore.ServiceManager do
 
   @impl true
   def handle_info({:container_ready, name, ip, _ports}, s) when name == s.service.name do
+    DrawbridgeCore.Telemetry.emit_boot_stop(name, boot_duration_ms(s), true)
+
     {_, first_container_port} = hd(s.ports)
 
     Enum.each(s.waiters, fn {from, _ref} ->
@@ -191,24 +202,27 @@ defmodule DrawbridgeCore.ServiceManager do
         ip: ip,
         waiters: [],
         active_connections: length(s.waiters),
-        started_at: System.monotonic_time(:second)
+        started_at: System.monotonic_time(:second),
+        boot_started_at: nil
     }
 
     {:noreply, reset_idle_timer(s)}
   end
 
   def handle_info({:container_error, name, reason}, s) when name == s.service.name do
+    DrawbridgeCore.Telemetry.emit_boot_stop(name, boot_duration_ms(s), false)
     Logger.error("[ServiceManager] Container error for #{name}: #{inspect(reason)}")
 
     Enum.each(s.waiters, fn {from, _ref} ->
       GenServer.reply(from, {:error, reason})
     end)
 
-    {:noreply, %{s | state: :stopped, waiters: [], ip: nil}}
+    {:noreply, %{s | state: :stopped, waiters: [], ip: nil, boot_started_at: nil}}
   end
 
   def handle_info(:idle_timeout, %{active_connections: 0} = s) do
     Logger.info("[ServiceManager] Idle timeout for #{s.service.name}, stopping container")
+    DrawbridgeCore.Telemetry.emit_idle_timeout(s.service.name)
     name = s.service.name
     bridge = swift_bridge()
     Task.start(fn -> bridge.call_agent({:stop, name}) end)
@@ -265,6 +279,9 @@ defmodule DrawbridgeCore.ServiceManager do
     timer = Process.send_after(self(), :idle_timeout, timeout_ms)
     %{s | idle_timer: timer}
   end
+
+  defp boot_duration_ms(%{boot_started_at: nil}), do: 0
+  defp boot_duration_ms(%{boot_started_at: t}), do: System.monotonic_time(:millisecond) - t
 
   defp cancel_idle_timer(%{idle_timer: nil} = s), do: s
 

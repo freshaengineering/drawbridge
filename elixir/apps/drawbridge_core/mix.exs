@@ -29,7 +29,9 @@ defmodule DrawbridgeCore.MixProject do
   defp deps do
     [
       {:yaml_elixir, "~> 2.11"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:opentelemetry_api, "~> 1.5"},
+      {:telemetry, "~> 1.3"}
     ]
   end
 end

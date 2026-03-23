@@ -12,6 +12,10 @@ config :drawbridge_proxy,
   # Non-TLS listeners are dynamically created from config
   cert_dir: "~/.drawbridge/certs"
 
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: {:opentelemetry_exporter, %{endpoints: ["http://localhost:4317"]}}
+
 config :logger,
   level: :info
 

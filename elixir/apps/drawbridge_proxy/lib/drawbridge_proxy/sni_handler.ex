@@ -49,7 +49,8 @@ defmodule DrawbridgeProxy.SniHandler do
       protocol_detected: false,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
-      msg_error: msg_error
+      msg_error: msg_error,
+      started_at: System.monotonic_time(:millisecond)
     }
 
     :gen_statem.enter_loop(__MODULE__, [], :waiting_hello, data)
@@ -190,6 +191,11 @@ defmodule DrawbridgeProxy.SniHandler do
 
   @impl :gen_statem
   def terminate(_reason, _state, data) do
+    if data[:service_name] && data[:started_at] do
+      duration = System.monotonic_time(:millisecond) - data.started_at
+      DrawbridgeCore.Telemetry.emit_connection_stop(data.service_name, duration)
+    end
+
     if data[:service_name] && data[:conn_ref] do
       DrawbridgeProxy.ProtocolRegistry.delete(data.service_name, data.conn_ref)
     end
@@ -214,9 +220,11 @@ defmodule DrawbridgeProxy.SniHandler do
   defp do_sni_lookup(hostname, buffered, data) do
     case DrawbridgeCore.ServiceManager.request_connection(hostname) do
       {:ok, {ip, port}} ->
+        DrawbridgeCore.Telemetry.emit_connection_start(hostname, :sni)
         do_connect_backend(ip, port, buffered, %{data | service_name: hostname})
 
       {:wait, ref} ->
+        DrawbridgeCore.Telemetry.emit_connection_start(hostname, :sni)
         Logger.debug("[SniHandler] waiting for container boot: #{hostname}")
         new_data = %{data | service_name: hostname, wait_ref: ref}
 
