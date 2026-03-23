@@ -55,7 +55,11 @@ defmodule DrawbridgeCore.JsonBridge do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
-    binary = opts[:swift_binary] || find_swift_binary()
+    binary =
+      if Keyword.has_key?(opts, :swift_binary),
+        do: opts[:swift_binary],
+        else: find_swift_binary()
+
     args = opts[:swift_args] || []
 
     state = %__MODULE__{
@@ -296,17 +300,58 @@ defmodule DrawbridgeCore.JsonBridge do
   end
 
   defp find_swift_binary do
-    configured = Application.get_env(:drawbridge_core, :swift_binary_path)
+    configured =
+      System.get_env("DRAWBRIDGE_SWIFT_BINARY") ||
+        Application.get_env(:drawbridge_core, :swift_binary_path)
 
     paths =
       [
         configured,
+        sibling_binary(),
         app_dir_binary(),
         System.find_executable("drawbridge-agent")
       ]
       |> Enum.reject(&is_nil/1)
 
     Enum.find(paths, &File.exists?/1)
+  end
+
+  # When installed via `task dev:install`, both the escript and the Swift agent
+  # live as symlinks in dist/. Resolve the escript's real location and look for
+  # drawbridge-agent next to it.
+  defp sibling_binary do
+    script =
+      case :escript.script_name() do
+        [] -> nil
+        name -> to_string(name)
+      end
+
+    script_path = script || System.find_executable("drawbridge")
+
+    with path when is_binary(path) <- script_path,
+         expanded = Path.expand(path),
+         dir = resolve_symlink_dir(expanded) do
+      Path.join(dir, "drawbridge-agent")
+    else
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp resolve_symlink_dir(path) do
+    case File.read_link(path) do
+      {:ok, target} ->
+        abs_target =
+          if Path.type(target) == :absolute,
+            do: target,
+            else: Path.expand(Path.join(Path.dirname(path), target))
+
+        Path.dirname(abs_target)
+
+      _ ->
+        Path.dirname(path)
+    end
   end
 
   defp app_dir_binary do
