@@ -15,6 +15,9 @@ defmodule DrawbridgeCore.StubSwiftBridge do
   blocking the ServiceManager.
   """
 
+  @behaviour DrawbridgeCore.SwiftBridge
+
+  @impl true
   def call_agent(command, timeout \\ 30_000)
 
   def call_agent({:start, _name, _image, ports, _env}, _timeout) do
