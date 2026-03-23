@@ -59,7 +59,10 @@ defmodule Mix.Tasks.Drawbridge.Up do
     Mix.shell().info("  Domain: *.#{config.domain}")
     Mix.shell().info("")
 
-    header = String.pad_trailing("Service", 20) <> String.pad_trailing("Hostname", 30) <> String.pad_trailing("Ports", 20) <> "State"
+    header =
+      String.pad_trailing("Service", 20) <>
+        String.pad_trailing("Hostname", 30) <> String.pad_trailing("Ports", 20) <> "State"
+
     Mix.shell().info("  #{header}")
     Mix.shell().info("  #{String.duplicate("─", 80)}")
 

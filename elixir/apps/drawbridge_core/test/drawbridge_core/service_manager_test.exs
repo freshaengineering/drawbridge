@@ -19,7 +19,14 @@ defmodule DrawbridgeCore.ServiceManagerTest do
   setup do
     # Each test gets its own service name to avoid Registry conflicts
     name = "test-svc-#{:rand.uniform(100_000)}"
-    svc = %{@service | name: name, hostname: "#{name}.dev.local", ports: [{:rand.uniform(60_000) + 1024, 80}]}
+
+    svc = %{
+      @service
+      | name: name,
+        hostname: "#{name}.dev.local",
+        ports: [{:rand.uniform(60_000) + 1024, 80}]
+    }
+
     {:ok, svc: svc}
   end
 

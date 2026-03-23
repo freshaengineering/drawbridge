@@ -1,0 +1,177 @@
+version: "3"
+
+vars:
+  VERSION:
+    sh: cat VERSION
+  ELIXIR_DIR: elixir
+  SWIFT_DIR: swift
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+
+  # ── Setup ──────────────────────────────────────────────
+
+  setup:
+    desc: Install all dependencies and build everything
+    cmds:
+      - task: deps
+      - task: build
+
+  deps:
+    desc: Install all dependencies
+    deps: [deps:elixir, deps:swift]
+
+  deps:elixir:
+    desc: Install Elixir dependencies
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix deps.get
+    sources:
+      - mix.exs
+      - mix.lock
+      - apps/*/mix.exs
+
+  deps:swift:
+    desc: Resolve Swift package dependencies
+    dir: "{{.SWIFT_DIR}}"
+    cmds:
+      - swift package resolve
+    sources:
+      - Package.swift
+      - Package.resolved
+
+  # ── Build ──────────────────────────────────────────────
+
+  build:
+    desc: Build everything
+    deps: [build:elixir, build:swift]
+
+  build:elixir:
+    desc: Compile Elixir project
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix compile --warnings-as-errors
+    sources:
+      - apps/**/lib/**/*.ex
+      - apps/**/mix.exs
+      - config/*.exs
+
+  build:swift:
+    desc: Build Swift agent (release)
+    dir: "{{.SWIFT_DIR}}"
+    cmds:
+      - swift build -c release
+    sources:
+      - Sources/**/*.swift
+      - Package.swift
+
+  build:swift:debug:
+    desc: Build Swift agent (debug)
+    dir: "{{.SWIFT_DIR}}"
+    cmds:
+      - swift build
+
+  # ── Test ───────────────────────────────────────────────
+
+  test:
+    desc: Run all tests
+    cmds:
+      - task: test:elixir
+
+  test:elixir:
+    desc: Run Elixir tests
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix test {{.CLI_ARGS}}
+
+  test:watch:
+    desc: Run Elixir tests on file change
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix test --stale --listen-on-stdin
+
+  # ── Lint / Format ─────────────────────────────────────
+
+  fmt:
+    desc: Format all code
+    deps: [fmt:elixir, fmt:swift]
+
+  fmt:elixir:
+    desc: Format Elixir code
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix format
+
+  fmt:swift:
+    desc: Format Swift code (if swift-format available)
+    dir: "{{.SWIFT_DIR}}"
+    cmds:
+      - swift-format format -r Sources/ -i
+    ignore_error: true
+
+  lint:
+    desc: Lint everything
+    cmds:
+      - task: lint:elixir
+      - task: lint:swift
+
+  lint:elixir:
+    desc: Lint Elixir (compile warnings + format check)
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix compile --warnings-as-errors
+      - mix format --check-formatted
+
+  lint:swift:
+    desc: Lint Swift (build warnings)
+    dir: "{{.SWIFT_DIR}}"
+    cmds:
+      - swift build 2>&1 | grep -i warning || true
+
+  # ── Run ────────────────────────────────────────────────
+
+  up:
+    desc: Start Drawbridge proxy
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix drawbridge.up {{.CLI_ARGS}}
+
+  down:
+    desc: Stop Drawbridge and all containers
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix drawbridge.down
+
+  status:
+    desc: Show service status
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix drawbridge.status
+
+  pull:
+    desc: Pre-pull container images
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix drawbridge.pull {{.CLI_ARGS}}
+
+  init:
+    desc: Generate drawbridge.yml in current directory
+    dir: "{{.ELIXIR_DIR}}"
+    cmds:
+      - mix drawbridge.init
+
+  # ── Release ────────────────────────────────────────────
+
+  version:
+    desc: Print current version
+    cmds:
+      - echo "{{.VERSION}}"
+
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - rm -rf {{.ELIXIR_DIR}}/_build {{.ELIXIR_DIR}}/deps
+      - rm -rf {{.SWIFT_DIR}}/.build

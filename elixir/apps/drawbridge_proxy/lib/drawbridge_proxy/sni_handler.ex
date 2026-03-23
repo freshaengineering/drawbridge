@@ -58,8 +58,11 @@ defmodule DrawbridgeProxy.SniHandler do
 
   # ---- waiting_hello ----
 
-  def waiting_hello(:info, {msg_ok, socket, chunk},
-        %{msg_ok: msg_ok, socket: socket, transport: transport, buffer: buf} = data) do
+  def waiting_hello(
+        :info,
+        {msg_ok, socket, chunk},
+        %{msg_ok: msg_ok, socket: socket, transport: transport, buffer: buf} = data
+      ) do
     new_buf = buf <> chunk
 
     cond do
@@ -87,8 +90,7 @@ defmodule DrawbridgeProxy.SniHandler do
     {:stop, :normal}
   end
 
-  def waiting_hello(:info, {msg_error, socket, reason},
-        %{msg_error: msg_error, socket: socket}) do
+  def waiting_hello(:info, {msg_error, socket, reason}, %{msg_error: msg_error, socket: socket}) do
     Logger.debug("[SniHandler] socket error in waiting_hello: #{inspect(reason)}")
     {:stop, :normal}
   end
@@ -98,8 +100,11 @@ defmodule DrawbridgeProxy.SniHandler do
 
   # ---- connecting_backend ----
 
-  def connecting_backend(:info, {:container_ready, ref, ip, port},
-        %{wait_ref: ref, buffer: buf} = data) do
+  def connecting_backend(
+        :info,
+        {:container_ready, ref, ip, port},
+        %{wait_ref: ref, buffer: buf} = data
+      ) do
     do_connect_backend(ip, port, buf, data)
   end
 
@@ -110,7 +115,11 @@ defmodule DrawbridgeProxy.SniHandler do
     {:stop, :normal}
   end
 
-  def connecting_backend(:info, {msg_closed, socket}, %{msg_closed: msg_closed, socket: socket} = data) do
+  def connecting_backend(
+        :info,
+        {msg_closed, socket},
+        %{msg_closed: msg_closed, socket: socket} = data
+      ) do
     DrawbridgeCore.ServiceManager.release_connection(data.service_name)
     {:stop, :normal}
   end
@@ -121,8 +130,11 @@ defmodule DrawbridgeProxy.SniHandler do
   # ---- relaying ----
 
   # Client -> backend
-  def relaying(:info, {msg_ok, socket, chunk},
-        %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data) do
+  def relaying(
+        :info,
+        {msg_ok, socket, chunk},
+        %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data
+      ) do
     case :gen_tcp.send(backend, chunk) do
       :ok ->
         transport.setopts(socket, active: :once)
@@ -134,8 +146,11 @@ defmodule DrawbridgeProxy.SniHandler do
   end
 
   # Backend -> client
-  def relaying(:info, {:tcp, socket, chunk},
-        %{backend_socket: socket, socket: client, transport: transport} = data) do
+  def relaying(
+        :info,
+        {:tcp, socket, chunk},
+        %{backend_socket: socket, socket: client, transport: transport} = data
+      ) do
     case transport.send(client, chunk) do
       :ok ->
         :inet.setopts(socket, active: :once)
@@ -154,8 +169,7 @@ defmodule DrawbridgeProxy.SniHandler do
     close_and_stop(data)
   end
 
-  def relaying(:info, {msg_error, socket, reason},
-        %{msg_error: msg_error, socket: socket} = data) do
+  def relaying(:info, {msg_error, socket, reason}, %{msg_error: msg_error, socket: socket} = data) do
     Logger.debug("[SniHandler] client error in relay: #{inspect(reason)}")
     close_and_stop(data)
   end
@@ -186,6 +200,7 @@ defmodule DrawbridgeProxy.SniHandler do
       {:wait, ref} ->
         Logger.debug("[SniHandler] waiting for container boot: #{hostname}")
         new_data = %{data | service_name: hostname, wait_ref: ref}
+
         {:next_state, :connecting_backend, new_data,
          [{:state_timeout, @boot_wait_timeout, :boot_timeout}]}
 
@@ -198,8 +213,12 @@ defmodule DrawbridgeProxy.SniHandler do
   defp do_connect_backend(ip, port, initial_bytes, data) do
     ip_addr = parse_ip(ip)
 
-    case :gen_tcp.connect(ip_addr, port, [:binary, active: :once, nodelay: true],
-           @backend_connect_timeout) do
+    case :gen_tcp.connect(
+           ip_addr,
+           port,
+           [:binary, active: :once, nodelay: true],
+           @backend_connect_timeout
+         ) do
       {:ok, backend_socket} ->
         # Forward the buffered ClientHello verbatim so the backend does TLS handshake
         :ok = :gen_tcp.send(backend_socket, initial_bytes)
@@ -209,7 +228,10 @@ defmodule DrawbridgeProxy.SniHandler do
 
       {:error, reason} ->
         Logger.warning("[SniHandler] backend connect #{ip}:#{port} failed: #{inspect(reason)}")
-        if data.service_name, do: DrawbridgeCore.ServiceManager.release_connection(data.service_name)
+
+        if data.service_name,
+          do: DrawbridgeCore.ServiceManager.release_connection(data.service_name)
+
         {:stop, :normal}
     end
   end

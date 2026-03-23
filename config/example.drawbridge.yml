@@ -1,36 +1,52 @@
+# Drawbridge configuration — Fresha B2C stack
+#
+# This runs the B2C consumer flow locally: SPA → API Gateway → backend services.
+# Only the service you're actively developing runs from source (mix phx.server / npm run dev).
+# Everything else boots from pre-built CI containers on demand.
+#
+# Example: developing on app-b2c-api-gateway locally while all Elixir services
+# run from containers:
+#
+#   1. Comment out the api-gateway service below (you're running it locally)
+#   2. Run: task up
+#   3. Hit https://api.b2c.dev.local — gateway talks to the containerised backends
+#   4. Unused services sleep after 5 minutes
+
 domain: dev.local
 idle_timeout: 300
-max_containers: 8
+max_containers: 10
 
 services:
-  api-b2c:
-    image: ghcr.io/org/api-b2c:latest
-    hostname: api.b2c.dev.local
-    ports:
-      - "443:4000"
-    env:
-      DATABASE_URL: "postgres://postgres.dev.local:5432/b2c"
-      REDIS_URL: "redis://redis.dev.local:6379"
-    idle_timeout: 600
-    health_check: "curl -sf http://localhost:4000/health"
-    depends_on:
-      - postgres
-      - redis
+  # ── Backing services ──────────────────────────────────
 
   postgres:
-    image: postgres:16
+    image: postgis/postgis:17-3.5
     hostname: postgres.dev.local
     ports:
       - "5432:5432"
     env:
       POSTGRES_PASSWORD: dev
-    idle_timeout: 900
+      POSTGRES_DB: shedul_dev
+    idle_timeout: 1800       # 30min — DB restarts are expensive
+    boot_timeout: 15
 
   redis:
-    image: redis:7
+    image: redis:6.2
     hostname: redis.dev.local
     ports:
       - "6379:6379"
+    idle_timeout: 1800
+
+  elasticsearch:
+    image: elasticsearch:9.0.3
+    hostname: es.dev.local
+    ports:
+      - "9200:9200"
+    env:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+    idle_timeout: 300
+    boot_timeout: 60         # ES is slow
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -39,13 +55,75 @@ services:
       - "9092:9092"
     env:
       KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka.dev.local:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+    idle_timeout: 600
 
-  elasticsearch:
-    image: elasticsearch:8.13.0
-    hostname: es.dev.local
+  # ── B2C API Gateway (Node.js/GraphQL BFF) ─────────────
+
+  api-gateway:
+    image: ghcr.io/surgeventures/app-b2c-api-gateway:latest
+    hostname: api.b2c.dev.local
     ports:
-      - "9200:9200"
+      - "443:3000"
     env:
-      discovery.type: single-node
-    idle_timeout: 120
-    boot_timeout: 60
+      NODE_ENV: development
+      CACHE_REDIS_URL: "redis://redis.dev.local:6379"
+      B2C_USERS_GRPC_URL: "b2c-users.dev.local:50051"
+      PLATFORM_GRPC_URL: "platform.dev.local:50051"
+    health_check: "curl -sf http://localhost:3000/health"
+    boot_timeout: 30
+    depends_on:
+      - redis
+
+  # ── B2C Users (Elixir/gRPC) ──────────────────────────
+
+  b2c-users:
+    image: ghcr.io/surgeventures/app-b2c-users:latest
+    hostname: b2c-users.dev.local
+    ports:
+      - "50051:50051"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/b2c_users_dev"
+      REDIS_URL: "redis://redis.dev.local:6379"
+      B2C_REDIS_ENABLED: "true"
+    health_check: "grpc_health_probe -addr=localhost:50051"
+    depends_on:
+      - postgres
+      - redis
+
+  # ── Shedul/Platform (Elixir umbrella — core services) ─
+
+  platform:
+    image: ghcr.io/surgeventures/app-shedul-umbrella:latest
+    hostname: platform.dev.local
+    ports:
+      - "50052:50051"         # remap to avoid port clash with b2c-users
+      - "4000:4000"           # Partners API web
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/shedul_dev"
+      REDIS_URL: "redis://redis.dev.local:6379"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    health_check: "curl -sf http://localhost:4000/health"
+    boot_timeout: 45
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+
+  # ── Marketplace Search (Elixir — ES + Kafka) ─────────
+
+  marketplace-search:
+    image: ghcr.io/surgeventures/app-marketplace-search:latest
+    hostname: search.dev.local
+    ports:
+      - "50053:50051"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/marketplace_search_dev"
+      ELASTICSEARCH_URL: "http://es.dev.local:9200"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    health_check: "grpc_health_probe -addr=localhost:50051"
+    boot_timeout: 30
+    depends_on:
+      - postgres
+      - elasticsearch
+      - kafka

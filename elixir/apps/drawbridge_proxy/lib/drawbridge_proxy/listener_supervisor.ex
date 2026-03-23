@@ -47,7 +47,7 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
           :ranch_tcp,
           %{socket_opts: [port: port]},
           DrawbridgeProxy.PortHandler,
-          [service_name: service_name]
+          service_name: service_name
         )
       end)
 
@@ -67,7 +67,7 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
         :ranch_tcp,
         %{socket_opts: [port: port]},
         DrawbridgeProxy.PortHandler,
-        [service_name: service_name]
+        service_name: service_name
       )
 
     case Supervisor.start_child(__MODULE__, child_spec) do

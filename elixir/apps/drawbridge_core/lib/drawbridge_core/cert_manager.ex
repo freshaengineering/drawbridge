@@ -96,8 +96,10 @@ defmodule DrawbridgeCore.CertManager do
     case System.cmd("security", [
            "add-trusted-cert",
            "-d",
-           "-r", "trustRoot",
-           "-k", "/Library/Keychains/System.keychain",
+           "-r",
+           "trustRoot",
+           "-k",
+           "/Library/Keychains/System.keychain",
            ca_cert_path
          ]) do
       {_, 0} ->
@@ -164,11 +166,17 @@ defmodule DrawbridgeCore.CertManager do
 
         {_, 0} =
           System.cmd("openssl", [
-            "req", "-new", "-x509",
-            "-key", tmp_key,
-            "-out", tmp_cert,
-            "-days", to_string(@cert_validity_days),
-            "-config", tmp_conf
+            "req",
+            "-new",
+            "-x509",
+            "-key",
+            tmp_key,
+            "-out",
+            tmp_cert,
+            "-days",
+            to_string(@cert_validity_days),
+            "-config",
+            tmp_conf
           ])
       else
         # Signed by CA
@@ -206,10 +214,14 @@ defmodule DrawbridgeCore.CertManager do
           # Generate CSR
           {_, 0} =
             System.cmd("openssl", [
-              "req", "-new",
-              "-key", tmp_key,
-              "-out", tmp_csr,
-              "-config", tmp_conf
+              "req",
+              "-new",
+              "-key",
+              tmp_key,
+              "-out",
+              tmp_csr,
+              "-config",
+              tmp_conf
             ])
 
           ext_conf_path = Path.join(tmp_dir, "drawbridge_ext_#{:rand.uniform(999_999)}.cnf")
@@ -228,14 +240,21 @@ defmodule DrawbridgeCore.CertManager do
 
           {_, 0} =
             System.cmd("openssl", [
-              "x509", "-req",
-              "-in", tmp_csr,
-              "-CA", actual_ca_cert,
-              "-CAkey", tmp_ca_key,
+              "x509",
+              "-req",
+              "-in",
+              tmp_csr,
+              "-CA",
+              actual_ca_cert,
+              "-CAkey",
+              tmp_ca_key,
               "-CAcreateserial",
-              "-out", tmp_cert,
-              "-days", to_string(@cert_validity_days),
-              "-extfile", ext_conf_path
+              "-out",
+              tmp_cert,
+              "-days",
+              to_string(@cert_validity_days),
+              "-extfile",
+              ext_conf_path
             ])
 
           File.rm(ext_conf_path)

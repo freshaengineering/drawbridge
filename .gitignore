@@ -31,3 +31,9 @@ Thumbs.db
 # Drawbridge runtime
 .drawbridge/
 erl_crash.dump
+
+# Task runner cache
+.task/
+
+# OMC
+.omc/

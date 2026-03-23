@@ -134,7 +134,9 @@ defmodule DrawbridgeProxy.SniHandlerTest do
       {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
 
       # Pretend we're sending a 20KB TLS record
-      huge = :binary.copy(<<0x16, 0x03, 0x01>>, 1) <> <<0x4E, 0x20>> <> :binary.copy(<<0>>, 20_000)
+      huge =
+        :binary.copy(<<0x16, 0x03, 0x01>>, 1) <> <<0x4E, 0x20>> <> :binary.copy(<<0>>, 20_000)
+
       :ok = :gen_tcp.send(sock, huge)
 
       assert {:error, :closed} = :gen_tcp.recv(sock, 0, 2_000)

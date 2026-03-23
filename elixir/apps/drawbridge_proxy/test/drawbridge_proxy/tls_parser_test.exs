@@ -18,21 +18,21 @@ defmodule DrawbridgeProxy.TlsParserTest do
 
     extensions = <<byte_size(sni_ext)::16>> <> sni_ext
 
+    # version TLS 1.2
+    # random (32 zeroed bytes)
+    # session_id_len = 0
+    # cipher_suites_len
+    # TLS_RSA_WITH_AES_128_CBC_SHA
+    # compression_methods_len
+    # null compression
     hello_body =
       <<0x03, 0x03>> <>
-        # version TLS 1.2
         <<0::256>> <>
-        # random (32 zeroed bytes)
         <<0x00>> <>
-        # session_id_len = 0
         <<0x00, 0x02>> <>
-        # cipher_suites_len
         <<0x00, 0x2F>> <>
-        # TLS_RSA_WITH_AES_128_CBC_SHA
         <<0x01>> <>
-        # compression_methods_len
         <<0x00>> <>
-        # null compression
         extensions
 
     handshake = <<0x01, byte_size(hello_body)::24>> <> hello_body
