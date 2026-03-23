@@ -40,7 +40,12 @@ defmodule Mix.Tasks.Drawbridge.Setup do
         DrawbridgeCore.CertManager.install_ca_trust(certs.ca_cert)
     end
 
-    # 3. DNS via /etc/hosts
+    # 3. DNS via /etc/hosts (and clean up stale /etc/resolver/ if present)
+    if File.exists?(Path.join("/etc/resolver", domain)) do
+      IO.puts("[setup] Removing stale /etc/resolver/#{domain} (causes DNS timeouts)...")
+      DrawbridgeCore.DnsManager.teardown(domain)
+    end
+
     config_path = opts[:config] || DrawbridgeCli.find_config()
     IO.puts("[setup] Configuring /etc/hosts from #{config_path} (may prompt for sudo)...")
 
