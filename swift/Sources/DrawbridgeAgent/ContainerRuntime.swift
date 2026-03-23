@@ -83,13 +83,22 @@ actor ContainerRuntime {
         if let memory { args += ["--memory", memory] }
         args.append(image)
 
-        let (_, stderr, code) = try await runCommand(args)
-        guard code == 0 else {
+        let portDesc = ports.map { "\($0.hostPort):\($0.containerPort)" }.joined(separator: ", ")
+        print("[ContainerRuntime] \(name): running `container \(args.prefix(4).joined(separator: " "))...` ports=[\(portDesc)] env_count=\(env.count)")
+
+        let (stdout, stderr, code) = try await runCommand(args)
+        if code == 0 {
+            print("[ContainerRuntime] \(name): container started (id=\(stdout.prefix(12).trimmingCharacters(in: .whitespacesAndNewlines)))")
+        } else {
+            print("[ContainerRuntime] \(name): run failed (exit \(code)): \(stderr.prefix(500))")
             throw RuntimeError.commandFailed("run \(name): \(stderr)")
         }
 
         // Fetch fresh state after start
-        return try await inspect(name: name)
+        print("[ContainerRuntime] \(name): inspecting container state...")
+        let info = try await inspect(name: name)
+        print("[ContainerRuntime] \(name): state=\(info.state.rawValue) ip=\(info.ipAddress ?? "none")")
+        return info
     }
 
     func stop(name: String) async throws {
@@ -137,6 +146,9 @@ actor ContainerRuntime {
     // MARK: - Shell helper
 
     func runCommand(_ args: [String]) async throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        let fullCmd = "container " + args.joined(separator: " ")
+        print("[ContainerRuntime] exec: \(fullCmd.prefix(200))")
+
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         proc.arguments = ["container"] + args
@@ -151,6 +163,11 @@ actor ContainerRuntime {
 
         let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+
+        if proc.terminationStatus != 0 {
+            print("[ContainerRuntime] exec failed (exit \(proc.terminationStatus)): \(stderr.prefix(300))")
+        }
+
         return (stdout, stderr, proc.terminationStatus)
     }
 
