@@ -91,13 +91,14 @@ defmodule DrawbridgeProxy.SniHandlerTest do
     end
 
     test "returns fallback HTML page for unknown hostname when certs exist" do
-      # Generate test certs in a temp dir so CertManager.cert_paths/1 finds them
+      # Generate test certs in a temp dir so CertManager.cert_paths/2 finds them
+      test_domain = "dev.local"
       tmp_dir = Path.join(System.tmp_dir!(), "drawbridge_test_#{:rand.uniform(999_999)}")
       certs_dir = Path.join(tmp_dir, "certs")
       File.mkdir_p!(certs_dir)
 
-      cert_path = Path.join(certs_dir, "dev.local.pem")
-      key_path = Path.join(certs_dir, "dev.local-key.pem")
+      cert_path = Path.join(certs_dir, "#{test_domain}.pem")
+      key_path = Path.join(certs_dir, "#{test_domain}-key.pem")
 
       # Generate a self-signed cert via openssl for test purposes
       {_, 0} =
@@ -114,18 +115,26 @@ defmodule DrawbridgeProxy.SniHandlerTest do
           "1",
           "-nodes",
           "-subj",
-          "/CN=dev.local"
+          "/CN=#{test_domain}"
         ])
 
-      # Point CertManager at our temp dir
+      # Point CertManager at our temp dir and domain
       prev_data_dir = Application.get_env(:drawbridge_core, :data_dir)
+      prev_domain = Application.get_env(:drawbridge_core, :domain)
       Application.put_env(:drawbridge_core, :data_dir, tmp_dir)
+      Application.put_env(:drawbridge_core, :domain, test_domain)
 
       on_exit(fn ->
         if prev_data_dir do
           Application.put_env(:drawbridge_core, :data_dir, prev_data_dir)
         else
           Application.delete_env(:drawbridge_core, :data_dir)
+        end
+
+        if prev_domain do
+          Application.put_env(:drawbridge_core, :domain, prev_domain)
+        else
+          Application.delete_env(:drawbridge_core, :domain)
         end
 
         File.rm_rf!(tmp_dir)

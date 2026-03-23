@@ -234,36 +234,45 @@ defmodule DrawbridgeProxy.SniHandler do
       {:error, reason} ->
         Logger.debug("[SniHandler] unknown service #{hostname}: #{inspect(reason)}")
         send_fallback_page(data.socket, data.transport, hostname)
-        {:stop, :normal, data}
+        # Socket is now closed by send_fallback_page — nil it to prevent
+        # double-close in terminate/3.
+        {:stop, :normal, %{data | socket: nil}}
     end
   end
 
   defp send_fallback_page(socket, transport, hostname) do
     paths = DrawbridgeCore.CertManager.cert_paths()
 
-    ssl_opts = [
-      certfile: paths.cert,
-      keyfile: paths.key
-    ]
+    unless File.exists?(paths.cert) and File.exists?(paths.key) do
+      Logger.warning("[SniHandler] cannot serve fallback page: certs not found at #{paths.cert}")
 
-    case :ssl.handshake(socket, ssl_opts, 5_000) do
-      {:ok, ssl_socket} ->
-        html = build_fallback_html(hostname)
+      transport.close(socket)
+      :cert_missing
+    else
+      ssl_opts = [
+        certfile: paths.cert,
+        keyfile: paths.key
+      ]
 
-        response =
-          "HTTP/1.1 503 Service Unavailable\r\n" <>
-            "Content-Type: text/html; charset=utf-8\r\n" <>
-            "Content-Length: #{byte_size(html)}\r\n" <>
-            "Connection: close\r\n" <>
-            "\r\n" <>
-            html
+      case :ssl.handshake(socket, ssl_opts, 5_000) do
+        {:ok, ssl_socket} ->
+          html = build_fallback_html(hostname)
 
-        :ssl.send(ssl_socket, response)
-        :ssl.close(ssl_socket)
+          response =
+            "HTTP/1.1 503 Service Unavailable\r\n" <>
+              "Content-Type: text/html; charset=utf-8\r\n" <>
+              "Content-Length: #{byte_size(html)}\r\n" <>
+              "Connection: close\r\n" <>
+              "\r\n" <>
+              html
 
-      {:error, reason} ->
-        Logger.debug("[SniHandler] fallback TLS handshake failed: #{inspect(reason)}")
-        transport.close(socket)
+          :ssl.send(ssl_socket, response)
+          :ssl.close(ssl_socket)
+
+        {:error, reason} ->
+          Logger.debug("[SniHandler] fallback TLS handshake failed: #{inspect(reason)}")
+          transport.close(socket)
+      end
     end
   end
 
@@ -345,7 +354,12 @@ defmodule DrawbridgeProxy.SniHandler do
   defp fetch_service_rows do
     DrawbridgeCore.ServiceManager.list_services()
   catch
-    _, _ -> []
+    kind, reason ->
+      Logger.warning(
+        "[SniHandler] failed to fetch services: #{inspect(kind)}: #{inspect(reason)}"
+      )
+
+      []
   end
 
   defp html_escape(nil), do: ""
@@ -392,7 +406,7 @@ defmodule DrawbridgeProxy.SniHandler do
   end
 
   defp close_sockets(%{transport: t, socket: s, backend_socket: b, service_name: svc}) do
-    t.close(s)
+    if s, do: t.close(s)
     if b, do: :gen_tcp.close(b)
     if svc, do: DrawbridgeCore.ServiceManager.release_connection(svc)
   end
