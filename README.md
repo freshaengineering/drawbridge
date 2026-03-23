@@ -21,7 +21,7 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | Swift-Erlang interop | **Partial** | Container agent joins BEAM cluster via swift-erlang-actor-system |
 | GraphQL API + MCP server | **Done** | AI agent integration via Absinthe GraphQL and MCP stdio protocol |
 | L7 protocol inspection | **Done** | HTTP/gRPC/Kafka/Postgres wire protocol decoding |
-| OpenTelemetry / Datadog | Planned | Local distributed tracing and log aggregation |
+| OpenTelemetry / Datadog | **Done** | Telemetry events + OTel spans for proxy and service lifecycle |
 | TUI | **Done** | Terminal UI for service topology and traffic flow |
 
 ## How it works
@@ -343,7 +343,7 @@ drawbridge/
 
 ## Status
 
-Experimental. Pre-alpha. The core proxy and state management are implemented and tested (33 tests). Integration with Apple Container requires macOS 26.
+Experimental. Pre-alpha. The core proxy and state management are implemented and tested (135 tests). Integration with Apple Container requires macOS 26.
 
 Known risks:
 - Apple Container is pre-1.0 — API may break between minor versions
@@ -354,9 +354,9 @@ Known risks:
 
 - [ ] End-to-end integration test on macOS 26
 - [x] L7 protocol-aware proxy (HTTP/gRPC/Kafka/Postgres wire protocol inspection)
-- [ ] OpenTelemetry + Datadog local collector for distributed tracing
+- [x] OpenTelemetry instrumentation (telemetry events + OTel spans)
 - [x] TUI for service topology, traffic flow, and log tailing
-- [ ] `drawbridge.lock` for reproducible image version pinning
+- [x] `drawbridge.lock` for reproducible image version pinning
 - [x] AI agent API — GraphQL + MCP server for coding agent integration
 
 ## Credits

@@ -7,21 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-23
+
 ### Added
 
-- GraphQL API via Absinthe (`drawbridge_api` umbrella app) — queries for services/state, mutations for boot/stop
-- MCP server over stdio JSON-RPC 2.0 (`drawbridge mcp`) — exposes `schema_sdl` and `graphql` tools for AI agent integration
-- HTTP daemon mode (`drawbridge api`) with GraphiQL playground at `/` and `/graphql` endpoint
-- `setupPrompt` query returning markdown setup guide for AI agents configuring new projects
-- `schemaSdl` query for runtime schema introspection
-- L7 protocol-aware proxy: detect HTTP/1.1, Postgres, Redis, and Kafka wire protocols on first client chunk
-- Protocol behaviour (`DrawbridgeProxy.Protocol`) with `detect/1` callback for pluggable parsers
-- ETS-backed `ProtocolRegistry` for storing per-connection protocol metadata (keyed by service + connection ref)
-- Optional `protocol` hint field on `Config.Service` for explicit protocol declaration
-- SniHandler records `:tls` protocol with SNI hostname; PortHandler runs full protocol detection on raw TCP
-- TUI dashboard via Owl LiveScreen — live-updating service table with color-coded states, uptime, and connection counts
-- `drawbridge tui` command and `drawbridge up --tui` flag
-- New `drawbridge_tui` umbrella app with ServiceSubscriber (1s polling) and Dashboard renderer
+- E2E integration test scaffolding
+- L7 protocol-aware proxy — HTTP/1.1, Postgres, Redis, and Kafka wire protocol parsers with pluggable `Protocol` behaviour
+- OpenTelemetry instrumentation — telemetry events on proxy/service lifecycle, OTel spans for connections and container ops
+- TUI dashboard — Owl-based live terminal UI with color-coded service states, uptime, and connection counts (`drawbridge tui` / `drawbridge up --tui`)
+- `drawbridge.lock` for reproducible image version pinning
+- GraphQL API + MCP server — Absinthe schema (`drawbridge_api`), HTTP daemon with GraphiQL, stdio MCP with `schema_sdl` + `graphql` tools
+- Robust JSON IPC bridge for Swift agent — replaces broken Erlang RPC with stdin/stdout JSON-RPC
 
 ## [0.1.0] - 2026-03-16
 
