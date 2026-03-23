@@ -36,6 +36,8 @@ defmodule DrawbridgeProxy.PortHandler do
 
     service_name = Keyword.fetch!(opts, :service_name)
 
+    DrawbridgeCore.Telemetry.emit_connection_start(service_name, :port)
+
     data = %{
       transport: transport,
       socket: socket,
@@ -44,7 +46,8 @@ defmodule DrawbridgeProxy.PortHandler do
       wait_ref: nil,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
-      msg_error: msg_error
+      msg_error: msg_error,
+      started_at: System.monotonic_time(:millisecond)
     }
 
     :gen_statem.enter_loop(__MODULE__, [], :connecting, data)
@@ -168,6 +171,11 @@ defmodule DrawbridgeProxy.PortHandler do
 
   @impl :gen_statem
   def terminate(_reason, _state, data) do
+    if data[:service_name] && data[:started_at] do
+      duration = System.monotonic_time(:millisecond) - data.started_at
+      DrawbridgeCore.Telemetry.emit_connection_stop(data.service_name, duration)
+    end
+
     close_sockets(data)
     :ok
   end

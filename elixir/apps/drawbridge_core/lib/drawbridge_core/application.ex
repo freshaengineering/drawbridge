@@ -3,6 +3,8 @@ defmodule DrawbridgeCore.Application do
 
   @impl true
   def start(_type, _args) do
+    DrawbridgeCore.Telemetry.setup()
+
     children = [
       {Registry, keys: :unique, name: DrawbridgeCore.ServiceRegistry},
       {DynamicSupervisor, name: DrawbridgeCore.ServiceSupervisor, strategy: :one_for_one},

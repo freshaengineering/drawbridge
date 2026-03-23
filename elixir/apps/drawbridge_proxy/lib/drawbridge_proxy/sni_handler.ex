@@ -47,7 +47,8 @@ defmodule DrawbridgeProxy.SniHandler do
       wait_ref: nil,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
-      msg_error: msg_error
+      msg_error: msg_error,
+      started_at: System.monotonic_time(:millisecond)
     }
 
     :gen_statem.enter_loop(__MODULE__, [], :waiting_hello, data)
@@ -186,6 +187,11 @@ defmodule DrawbridgeProxy.SniHandler do
 
   @impl :gen_statem
   def terminate(_reason, _state, data) do
+    if data[:service_name] && data[:started_at] do
+      duration = System.monotonic_time(:millisecond) - data.started_at
+      DrawbridgeCore.Telemetry.emit_connection_stop(data.service_name, duration)
+    end
+
     close_sockets(data)
     :ok
   end
@@ -193,6 +199,8 @@ defmodule DrawbridgeProxy.SniHandler do
   # ---- private ----
 
   defp do_sni_lookup(hostname, buffered, data) do
+    DrawbridgeCore.Telemetry.emit_connection_start(hostname, :sni)
+
     case DrawbridgeCore.ServiceManager.request_connection(hostname) do
       {:ok, {ip, port}} ->
         do_connect_backend(ip, port, buffered, %{data | service_name: hostname})

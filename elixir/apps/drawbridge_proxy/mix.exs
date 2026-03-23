@@ -25,7 +25,8 @@ defmodule DrawbridgeProxy.MixProject do
   defp deps do
     [
       {:ranch, "~> 2.2"},
-      {:drawbridge_core, in_umbrella: true}
+      {:drawbridge_core, in_umbrella: true},
+      {:opentelemetry_api, "~> 1.4"}
     ]
   end
 end
