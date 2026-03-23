@@ -14,11 +14,18 @@ defmodule DrawbridgeCore.Application do
         [{bridge_mod, []}]
       end
 
+    dns_children =
+      if bridge_mod == DrawbridgeCore.StubSwiftBridge do
+        []
+      else
+        [{DrawbridgeCore.DnsServer, []}]
+      end
+
     children =
       [
         {Registry, keys: :unique, name: DrawbridgeCore.ServiceRegistry},
         {DynamicSupervisor, name: DrawbridgeCore.ServiceSupervisor, strategy: :one_for_one}
-      ] ++ bridge_children
+      ] ++ bridge_children ++ dns_children
 
     opts = [strategy: :one_for_one, name: DrawbridgeCore.Supervisor]
     Supervisor.start_link(children, opts)
