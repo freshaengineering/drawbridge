@@ -40,7 +40,11 @@ defmodule Mix.Tasks.Drawbridge.Setup do
         DrawbridgeCore.CertManager.install_ca_trust(certs.ca_cert)
     end
 
-    # 3. DNS via /etc/hosts (and clean up stale /etc/resolver/ if present)
+    # 3. Apple Container kernel
+    IO.puts("[setup] Checking Apple Container kernel...")
+    setup_container_kernel()
+
+    # 4. DNS via /etc/hosts (and clean up stale /etc/resolver/ if present)
     if File.exists?(Path.join("/etc/resolver", domain)) do
       IO.puts("[setup] Removing stale /etc/resolver/#{domain} (causes DNS timeouts)...")
       DrawbridgeCore.DnsManager.teardown(domain)
@@ -61,24 +65,57 @@ defmodule Mix.Tasks.Drawbridge.Setup do
         IO.puts(:stderr, "[setup] Skipping /etc/hosts — run with --config <path> to specify")
     end
 
-    # 4. Verify
+    # 5. Verify
     IO.puts("")
     IO.puts("[setup] Verification:")
 
     cert_ok = File.exists?(certs.cert) and File.exists?(certs.key)
     ca_ok = File.exists?(certs.ca_cert)
     {:ok, dns_status} = DrawbridgeCore.DnsManager.status(domain)
+    kernel_ok = container_kernel_configured?()
 
     IO.puts("  Certs:    #{if cert_ok, do: "ok", else: "MISSING"}")
     IO.puts("  CA:       #{if ca_ok, do: "ok", else: "MISSING"}")
     IO.puts("  DNS:      #{if dns_status == :configured, do: "ok", else: "NOT CONFIGURED"}")
+    IO.puts("  Kernel:   #{if kernel_ok, do: "ok", else: "NOT CONFIGURED"}")
     IO.puts("")
 
-    if cert_ok and ca_ok and dns_status == :configured do
+    if cert_ok and ca_ok and dns_status == :configured and kernel_ok do
       IO.puts("[setup] System is configured.")
     else
       IO.puts(:stderr, "[setup] Some steps failed. Check output above.")
       System.halt(1)
+    end
+  end
+
+  defp setup_container_kernel do
+    if container_kernel_configured?() do
+      IO.puts("[setup] Container kernel already configured, skipping")
+    else
+      IO.puts("[setup] Downloading recommended container kernel...")
+
+      case System.cmd("container", ["system", "kernel", "set", "--recommended"],
+             stderr_to_stdout: true
+           ) do
+        {output, 0} ->
+          IO.puts("[setup] #{String.trim(output)}")
+
+        {output, code} ->
+          IO.puts(:stderr, "[setup] Kernel setup failed (exit #{code}): #{String.trim(output)}")
+      end
+    end
+  end
+
+  defp container_kernel_configured? do
+    case System.cmd("container", ["system", "info", "--format", "json"], stderr_to_stdout: true) do
+      {json, 0} ->
+        case Jason.decode(json) do
+          {:ok, %{"defaultKernel" => kernel}} when is_binary(kernel) and kernel != "" -> true
+          _ -> false
+        end
+
+      _ ->
+        false
     end
   end
 end

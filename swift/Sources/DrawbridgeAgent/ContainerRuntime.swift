@@ -73,9 +73,8 @@ actor ContainerRuntime {
     ) async throws -> ContainerInfo {
         var args = ["run", "-d", "--name", name]
 
-        for p in ports {
-            args += ["-p", "\(p.hostPort):\(p.containerPort)/\(p.proto)"]
-        }
+        // No port mapping — containers get their own IP on the NAT network
+        // and drawbridge connects to container-ip:container-port directly.
         for (k, v) in env {
             args += ["-e", "\(k)=\(v)"]
         }
