@@ -34,7 +34,7 @@ defmodule DrawbridgeCore.ServiceManager do
   end
 
   @doc "Request a connection to a service. Returns {:ok, {ip, port}} or {:wait, ref} or {:error, reason}."
-  def request_connection(service_name, timeout \\ 30_000) do
+  def request_connection(service_name, timeout \\ 300_000) do
     case lookup(service_name) do
       {:ok, pid} -> GenServer.call(pid, {:request_connection, self()}, timeout)
       :error -> {:error, :service_not_found}
