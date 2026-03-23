@@ -56,6 +56,9 @@ defmodule Mix.Tasks.Drawbridge.Up do
       end)
     end
 
+    # Resolve ECR image tags (no-tag → latest from ECR API)
+    config = DrawbridgeCore.ImageResolver.resolve_config(config)
+
     orchestrated_config = DrawbridgeCore.Config.exclude_services(config, local_services)
     DrawbridgeCore.Orchestrator.start(orchestrated_config, config_path: config_path)
 
