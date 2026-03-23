@@ -29,7 +29,11 @@ actor CommandServer {
         encoder.dateEncodingStrategy = .iso8601
     }
 
-    /// Lock to serialize stdout writes so progress and response lines don't interleave.
+    // TODO: NSLock inside a Swift actor is a code smell — actors already serialize
+    // access to mutable state. The lock exists because pullImageStreaming's onLine
+    // callback fires from Task.detached on an arbitrary thread, and we need to
+    // prevent interleaved stdout writes. Refactor to route progress writes through
+    // the actor's serial executor instead.
     private let outputLock = NSLock()
 
     private func writeLine(_ line: String) {

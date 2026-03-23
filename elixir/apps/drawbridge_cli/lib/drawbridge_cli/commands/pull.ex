@@ -40,6 +40,7 @@ defmodule Mix.Tasks.Drawbridge.Pull do
 
           case DrawbridgeCore.SwiftBridge.call_agent({:pull, image}) do
             {:ok, _} ->
+              IO.write("\n")
               Mix.shell().info("  #{svc.name}: pulled")
 
             {:error, reason} ->
@@ -57,10 +58,6 @@ defmodule Mix.Tasks.Drawbridge.Pull do
       DrawbridgeCore.JsonBridge.subscribe_progress()
       progress_loop()
     end)
-  rescue
-    _ -> :ok
-  catch
-    :exit, _ -> :ok
   end
 
   defp progress_loop do

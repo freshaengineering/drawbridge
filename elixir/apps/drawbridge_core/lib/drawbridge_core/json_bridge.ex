@@ -210,7 +210,9 @@ defmodule DrawbridgeCore.JsonBridge do
         broadcast_progress(state, data)
         state
 
-      {:ok, %{"id" => id} = resp} ->
+      # Note: progress events also carry "id", so we guard them out here.
+      # This makes the clause ordering between progress and response safe.
+      {:ok, %{"id" => id} = resp} when not is_map_key(resp, "progress") ->
         case Map.pop(state.pending, to_string(id)) do
           {{from, timer}, pending} ->
             Process.cancel_timer(timer)
