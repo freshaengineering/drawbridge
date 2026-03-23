@@ -26,7 +26,7 @@ defmodule DrawbridgeProxy.MixProject do
     [
       {:ranch, "~> 2.2"},
       {:drawbridge_core, in_umbrella: true},
-      {:opentelemetry_api, "~> 1.4"}
+      {:opentelemetry_api, "~> 1.5"}
     ]
   end
 end

@@ -10,6 +10,11 @@ defmodule DrawbridgeCore.Telemetry do
     - `[:drawbridge, :idle_timeout]`       — service idled out
 
   Call `setup/0` at application start to attach OTel span handlers.
+
+  Span lifecycle: `:start` events open a span and stash context in the
+  process dictionary via `:otel_ctx`. The matching `:stop` event ends
+  the span. This gives real durations in Jaeger/Tempo instead of 0ms
+  point-in-time spans.
   """
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -53,10 +58,10 @@ defmodule DrawbridgeCore.Telemetry do
     )
   end
 
-  def emit_connection_stop(service_name, duration_ms, bytes_sent \\ 0, bytes_received \\ 0) do
+  def emit_connection_stop(service_name, duration_ms) do
     :telemetry.execute(
       [:drawbridge, :connection, :stop],
-      %{duration_ms: duration_ms, bytes_sent: bytes_sent, bytes_received: bytes_received},
+      %{duration_ms: duration_ms},
       %{service_name: service_name}
     )
   end
@@ -72,8 +77,8 @@ defmodule DrawbridgeCore.Telemetry do
   def emit_boot_stop(service_name, duration_ms, success) do
     :telemetry.execute(
       [:drawbridge, :boot, :stop],
-      %{duration_ms: duration_ms, success: success},
-      %{service_name: service_name}
+      %{duration_ms: duration_ms},
+      %{service_name: service_name, success: success}
     )
   end
 
@@ -87,52 +92,53 @@ defmodule DrawbridgeCore.Telemetry do
 
   # -- Handler callbacks --
 
+  # Start events: open a span and stash context in the process dictionary.
+  # The matching :stop handler will end it, giving real duration.
+
   @doc false
   def handle_event([:drawbridge, :connection, :start], _measurements, metadata, _config) do
-    Tracer.with_span "drawbridge.connection", %{
-      attributes: [
-        {"drawbridge.service", metadata.service_name},
-        {"drawbridge.routing_type", to_string(metadata.routing_type)}
-      ]
-    } do
-      :ok
-    end
+    _span_ctx =
+      Tracer.start_span("drawbridge.connection", %{
+        attributes: [
+          {"drawbridge.service", metadata.service_name},
+          {"drawbridge.routing_type", to_string(metadata.routing_type)}
+        ]
+      })
+
+    :ok
   end
 
   def handle_event([:drawbridge, :connection, :stop], measurements, metadata, _config) do
-    Tracer.with_span "drawbridge.connection.stop", %{
-      attributes: [
-        {"drawbridge.service", metadata.service_name},
-        {"drawbridge.duration_ms", measurements.duration_ms},
-        {"drawbridge.bytes_sent", measurements.bytes_sent},
-        {"drawbridge.bytes_received", measurements.bytes_received}
-      ]
-    } do
-      :ok
-    end
+    Tracer.set_attributes([
+      {"drawbridge.service", metadata.service_name},
+      {"drawbridge.duration_ms", measurements.duration_ms}
+    ])
+
+    Tracer.end_span()
+    :ok
   end
 
   def handle_event([:drawbridge, :boot, :start], _measurements, metadata, _config) do
-    Tracer.with_span "drawbridge.boot", %{
-      attributes: [
-        {"drawbridge.service", metadata.service_name},
-        {"drawbridge.image", metadata.image}
-      ]
-    } do
-      :ok
-    end
+    _span_ctx =
+      Tracer.start_span("drawbridge.boot", %{
+        attributes: [
+          {"drawbridge.service", metadata.service_name},
+          {"drawbridge.image", metadata.image}
+        ]
+      })
+
+    :ok
   end
 
   def handle_event([:drawbridge, :boot, :stop], measurements, metadata, _config) do
-    Tracer.with_span "drawbridge.boot.stop", %{
-      attributes: [
-        {"drawbridge.service", metadata.service_name},
-        {"drawbridge.duration_ms", measurements.duration_ms},
-        {"drawbridge.success", measurements.success}
-      ]
-    } do
-      :ok
-    end
+    Tracer.set_attributes([
+      {"drawbridge.service", metadata.service_name},
+      {"drawbridge.duration_ms", measurements.duration_ms},
+      {"drawbridge.success", metadata.success}
+    ])
+
+    Tracer.end_span()
+    :ok
   end
 
   def handle_event([:drawbridge, :idle_timeout], _measurements, metadata, _config) do

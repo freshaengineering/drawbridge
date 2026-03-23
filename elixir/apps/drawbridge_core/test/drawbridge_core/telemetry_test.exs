@@ -29,11 +29,7 @@ defmodule DrawbridgeCore.TelemetryTest do
 
   test "setup/0 attaches handlers without crashing" do
     # Detach first in case Application already attached
-    try do
-      Telemetry.teardown()
-    rescue
-      _ -> :ok
-    end
+    Telemetry.teardown()
 
     assert :ok = Telemetry.setup()
 
@@ -50,14 +46,12 @@ defmodule DrawbridgeCore.TelemetryTest do
     assert is_integer(measurements.system_time)
   end
 
-  test "emit_connection_stop fires event with duration and byte counts" do
-    Telemetry.emit_connection_stop("my-svc", 150, 1024, 2048)
+  test "emit_connection_stop fires event with duration" do
+    Telemetry.emit_connection_stop("my-svc", 150)
 
     assert_receive {:telemetry_event, [:drawbridge, :connection, :stop], measurements, metadata}
     assert metadata.service_name == "my-svc"
     assert measurements.duration_ms == 150
-    assert measurements.bytes_sent == 1024
-    assert measurements.bytes_received == 2048
   end
 
   test "emit_boot_start fires event with service name and image" do
@@ -68,20 +62,20 @@ defmodule DrawbridgeCore.TelemetryTest do
     assert metadata.image == "postgres:17"
   end
 
-  test "emit_boot_stop fires event with duration and success flag" do
+  test "emit_boot_stop fires event with duration and success in metadata" do
     Telemetry.emit_boot_stop("pg", 3200, true)
 
     assert_receive {:telemetry_event, [:drawbridge, :boot, :stop], measurements, metadata}
     assert metadata.service_name == "pg"
+    assert metadata.success == true
     assert measurements.duration_ms == 3200
-    assert measurements.success == true
   end
 
   test "emit_boot_stop fires with success=false on failure" do
     Telemetry.emit_boot_stop("pg", 500, false)
 
-    assert_receive {:telemetry_event, [:drawbridge, :boot, :stop], measurements, _metadata}
-    assert measurements.success == false
+    assert_receive {:telemetry_event, [:drawbridge, :boot, :stop], _measurements, metadata}
+    assert metadata.success == false
   end
 
   test "emit_idle_timeout fires event with service name" do
@@ -93,11 +87,7 @@ defmodule DrawbridgeCore.TelemetryTest do
 
   test "OTel setup doesn't crash when exporter is :none" do
     # exporter is :none in test.exs — just verify setup is fine
-    try do
-      Telemetry.teardown()
-    rescue
-      _ -> :ok
-    end
+    Telemetry.teardown()
 
     assert :ok = Telemetry.setup()
 

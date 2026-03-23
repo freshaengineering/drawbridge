@@ -199,13 +199,13 @@ defmodule DrawbridgeProxy.SniHandler do
   # ---- private ----
 
   defp do_sni_lookup(hostname, buffered, data) do
-    DrawbridgeCore.Telemetry.emit_connection_start(hostname, :sni)
-
     case DrawbridgeCore.ServiceManager.request_connection(hostname) do
       {:ok, {ip, port}} ->
+        DrawbridgeCore.Telemetry.emit_connection_start(hostname, :sni)
         do_connect_backend(ip, port, buffered, %{data | service_name: hostname})
 
       {:wait, ref} ->
+        DrawbridgeCore.Telemetry.emit_connection_start(hostname, :sni)
         Logger.debug("[SniHandler] waiting for container boot: #{hostname}")
         new_data = %{data | service_name: hostname, wait_ref: ref}
 

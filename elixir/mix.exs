@@ -14,7 +14,9 @@ defmodule Drawbridge.MixProject do
   defp deps do
     [
       {:yaml_elixir, "~> 2.11"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.8"}
     ]
   end
 
