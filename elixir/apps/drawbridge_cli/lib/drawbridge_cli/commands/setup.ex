@@ -44,7 +44,11 @@ defmodule Mix.Tasks.Drawbridge.Setup do
     IO.puts("[setup] Checking Apple Container kernel...")
     setup_container_kernel()
 
-    # 4. DNS via /etc/hosts (and clean up stale /etc/resolver/ if present)
+    # 4. Container DNS (*.dev.local resolves inside containers)
+    IO.puts("[setup] Checking container DNS for *.#{domain}...")
+    setup_container_dns(domain)
+
+    # 5. DNS via /etc/hosts (and clean up stale /etc/resolver/ if present)
     if File.exists?(Path.join("/etc/resolver", domain)) do
       IO.puts("[setup] Removing stale /etc/resolver/#{domain} (causes DNS timeouts)...")
       DrawbridgeCore.DnsManager.teardown(domain)
@@ -85,6 +89,30 @@ defmodule Mix.Tasks.Drawbridge.Setup do
     else
       IO.puts(:stderr, "[setup] Some steps failed. Check output above.")
       System.halt(1)
+    end
+  end
+
+  defp setup_container_dns(domain) do
+    case System.cmd("container", ["system", "dns", "ls"], stderr_to_stdout: true) do
+      {output, 0} ->
+        if String.contains?(output, domain) do
+          IO.puts("[setup] Container DNS for #{domain} already configured")
+        else
+          IO.puts("[setup] Creating container DNS domain #{domain} (requires sudo)...")
+
+          case System.cmd("sudo", ["container", "system", "dns", "create", domain],
+                 stderr_to_stdout: true
+               ) do
+            {_, 0} ->
+              IO.puts("[setup] Container DNS configured for *.#{domain}")
+
+            {out, code} ->
+              IO.puts(:stderr, "[setup] Container DNS failed (exit #{code}): #{String.trim(out)}")
+          end
+        end
+
+      _ ->
+        IO.puts(:stderr, "[setup] Cannot check container DNS — is Apple Container installed?")
     end
   end
 

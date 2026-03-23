@@ -42,10 +42,13 @@ defmodule DrawbridgeCore.HostNetwork do
   def resolve_env_for_container(env, domain) do
     gateway = host_gateway_ip()
     escaped = Regex.escape(domain)
-    pattern = Regex.compile!("[a-zA-Z0-9._-]+\\.#{escaped}")
+    # Only rewrite hostnames in URLs with schemes (http://, https://, redis://)
+    # Leave bare host:port gRPC URLs intact — containers resolve them via
+    # Apple Container DNS, and the hostname is needed for :authority routing.
+    url_pattern = Regex.compile!("(https?://|redis://)[a-zA-Z0-9._-]+\\.#{escaped}")
 
     Map.new(env, fn {key, value} ->
-      {key, Regex.replace(pattern, value, gateway)}
+      {key, Regex.replace(url_pattern, value, fn _match, scheme -> scheme <> gateway end)}
     end)
   end
 

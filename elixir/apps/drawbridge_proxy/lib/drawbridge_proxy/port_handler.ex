@@ -140,26 +140,34 @@ defmodule DrawbridgeProxy.PortHandler do
       Logger.debug("[PortHandler] gRPC buffer exceeded, dropping")
       {:stop, :normal}
     else
+      Logger.info("[PortHandler] gRPC received #{byte_size(new_buf)} bytes")
+
       case DrawbridgeProxy.Protocol.Http2.extract_authority(new_buf) do
         {:ok, authority} ->
           Logger.info("[PortHandler] gRPC routing authority=#{authority}")
 
           case DrawbridgeCore.ServiceRegistry.lookup_by_hostname(authority) do
             {:ok, _pid} ->
+              Logger.info("[PortHandler] gRPC matched service for #{authority}")
               data = %{data | service_name: authority, buffer: new_buf}
               DrawbridgeCore.Telemetry.emit_connection_start(authority, :grpc)
               {:next_state, :connecting, data, [{:state_timeout, 0, :do_connect}]}
 
             :error ->
-              Logger.debug("[PortHandler] no service for authority=#{authority}, falling back")
+              Logger.warning("[PortHandler] gRPC no service for authority=#{authority}")
               fallback_to_port_routing(%{data | buffer: new_buf})
           end
 
         {:error, :incomplete} ->
+          Logger.info("[PortHandler] gRPC incomplete, waiting for more bytes")
           :ok = transport.setopts(socket, active: :once)
           {:keep_state, %{data | buffer: new_buf}}
 
-        {:error, _reason} ->
+        {:error, reason} ->
+          Logger.warning(
+            "[PortHandler] gRPC parse error: #{inspect(reason)}, buf=#{inspect(binary_part(new_buf, 0, min(byte_size(new_buf), 50)))}"
+          )
+
           fallback_to_port_routing(%{data | buffer: new_buf})
       end
     end
