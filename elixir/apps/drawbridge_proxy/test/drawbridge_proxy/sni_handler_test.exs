@@ -89,6 +89,80 @@ defmodule DrawbridgeProxy.SniHandlerTest do
       assert result in [{:error, :closed}, {:error, :econnreset}] or
                match?({:ok, _}, result) == false
     end
+
+    test "returns fallback HTML page for unknown hostname when certs exist" do
+      # Generate test certs in a temp dir so CertManager.cert_paths/2 finds them
+      test_domain = "dev.local"
+      tmp_dir = Path.join(System.tmp_dir!(), "drawbridge_test_#{:rand.uniform(999_999)}")
+      certs_dir = Path.join(tmp_dir, "certs")
+      File.mkdir_p!(certs_dir)
+
+      cert_path = Path.join(certs_dir, "#{test_domain}.pem")
+      key_path = Path.join(certs_dir, "#{test_domain}-key.pem")
+
+      # Generate a self-signed cert via openssl for test purposes
+      {_, 0} =
+        System.cmd("openssl", [
+          "req",
+          "-x509",
+          "-newkey",
+          "rsa:2048",
+          "-keyout",
+          key_path,
+          "-out",
+          cert_path,
+          "-days",
+          "1",
+          "-nodes",
+          "-subj",
+          "/CN=#{test_domain}"
+        ])
+
+      # Point CertManager at our temp dir and domain
+      prev_data_dir = Application.get_env(:drawbridge_core, :data_dir)
+      prev_domain = Application.get_env(:drawbridge_core, :domain)
+      Application.put_env(:drawbridge_core, :data_dir, tmp_dir)
+      Application.put_env(:drawbridge_core, :domain, test_domain)
+
+      on_exit(fn ->
+        if prev_data_dir do
+          Application.put_env(:drawbridge_core, :data_dir, prev_data_dir)
+        else
+          Application.delete_env(:drawbridge_core, :data_dir)
+        end
+
+        if prev_domain do
+          Application.put_env(:drawbridge_core, :domain, prev_domain)
+        else
+          Application.delete_env(:drawbridge_core, :domain)
+        end
+
+        File.rm_rf!(tmp_dir)
+      end)
+
+      ref = make_ref()
+      port = start_listener(ref)
+      on_exit(fn -> stop_listener(ref) end)
+
+      {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
+      :ok = :gen_tcp.send(sock, client_hello("unknown.dev.local"))
+
+      # The handler will TLS-terminate and send an HTTP 503.
+      # We need to upgrade our side to TLS to read the response.
+      case :ssl.connect(sock, [verify: :verify_none], 5_000) do
+        {:ok, ssl_sock} ->
+          # Read the HTTP response
+          {:ok, response} = :ssl.recv(ssl_sock, 0, 5_000)
+          :ssl.close(ssl_sock)
+
+          assert response =~ "503 Service Unavailable"
+          assert response =~ "unknown.dev.local"
+          assert response =~ "drawbridge.yml"
+
+        {:error, reason} ->
+          flunk("TLS connect for fallback page failed: #{inspect(reason)}")
+      end
+    end
   end
 
   describe "TLS ClientHello parsing" do

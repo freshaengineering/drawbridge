@@ -32,6 +32,7 @@ defmodule Mix.Tasks.Drawbridge.Up do
 
     # Ensure TLS certs exist
     data_dir = Application.get_env(:drawbridge_core, :data_dir, "~/.drawbridge")
+    Application.put_env(:drawbridge_core, :domain, config.domain)
 
     {:ok, certs} = DrawbridgeCore.CertManager.ensure_certs(config.domain, data_dir)
     Logger.info("[Drawbridge] TLS certs ready at #{certs.cert}")
