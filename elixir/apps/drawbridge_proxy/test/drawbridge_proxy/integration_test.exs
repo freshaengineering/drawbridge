@@ -13,27 +13,9 @@ defmodule DrawbridgeProxy.IntegrationTest do
   alias DrawbridgeCore.Config.Service
   alias DrawbridgeCore.Orchestrator
 
+  import DrawbridgeProxy.TestHelpers, only: [client_hello: 1]
+
   # ---- helpers ----
-
-  defp client_hello(hostname) do
-    name_len = byte_size(hostname)
-    sni_body = <<name_len + 3::16, 0::8, name_len::16>> <> hostname
-    sni_ext = <<0x00, 0x00, byte_size(sni_body)::16>> <> sni_body
-    extensions = <<byte_size(sni_ext)::16>> <> sni_ext
-
-    hello_body =
-      <<0x03, 0x03>> <>
-        <<0::256>> <>
-        <<0x00>> <>
-        <<0x00, 0x02>> <>
-        <<0x00, 0x2F>> <>
-        <<0x01>> <>
-        <<0x00>> <>
-        extensions
-
-    handshake = <<0x01, byte_size(hello_body)::24>> <> hello_body
-    <<0x16, 0x03, 0x01, byte_size(handshake)::16>> <> handshake
-  end
 
   defp start_echo_backend do
     {:ok, lsock} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
@@ -44,13 +26,13 @@ defmodule DrawbridgeProxy.IntegrationTest do
         receive do
           :own -> :ok
         after
-          1_000 -> :ok
+          5_000 -> raise "controlling_process handoff timed out"
         end
 
         do_accept_loop(lsock)
       end)
 
-    :gen_tcp.controlling_process(lsock, pid)
+    :ok = :gen_tcp.controlling_process(lsock, pid)
     send(pid, :own)
 
     {lsock, port}
@@ -81,8 +63,6 @@ defmodule DrawbridgeProxy.IntegrationTest do
     end
   end
 
-  defp random_high_port, do: 30_000 + :rand.uniform(20_000)
-
   defp make_service(name, hostname, ports) do
     %Service{
       name: name,
@@ -108,18 +88,22 @@ defmodule DrawbridgeProxy.IntegrationTest do
     }
   end
 
-  defp start_ranch_listener(ref, handler, port, opts \\ []) do
+  defp start_ranch_listener(ref, handler, opts \\ []) do
     {:ok, _} =
       :ranch.start_listener(
         ref,
         :ranch_tcp,
-        %{socket_opts: [port: port]},
+        %{socket_opts: [port: 0]},
         handler,
         opts
       )
 
     on_exit(fn -> :ranch.stop_listener(ref) end)
+
+    # Read back the OS-assigned port to avoid TOCTOU race
+    {_ip, port} = :ranch.get_addr(ref)
     wait_for_listener(port)
+    port
   end
 
   defp wait_for_listener(port, attempts \\ 20) do
@@ -162,19 +146,15 @@ defmodule DrawbridgeProxy.IntegrationTest do
       {backend_lsock, backend_port} = start_echo_backend()
       on_exit(fn -> :gen_tcp.close(backend_lsock) end)
 
-      tls_port = random_high_port()
       # SniHandler looks up by service name, so name must equal the SNI hostname
       hostname = "sni-test-#{:rand.uniform(100_000)}.dev.local"
+      ref = :"sni_integration_#{:rand.uniform(100_000)}"
+
+      # Start listener first (port 0), then configure orchestrator with actual port
+      tls_port = start_ranch_listener(ref, DrawbridgeProxy.SniHandler)
 
       service = make_service(hostname, hostname, [{tls_port, backend_port}])
       :ok = Orchestrator.start(make_config([service]))
-
-      :ok =
-        start_ranch_listener(
-          :"sni_integration_#{tls_port}",
-          DrawbridgeProxy.SniHandler,
-          tls_port
-        )
 
       {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", tls_port, [:binary, active: false], 3_000)
       hello = client_hello(hostname)
@@ -191,19 +171,14 @@ defmodule DrawbridgeProxy.IntegrationTest do
       {backend_lsock, backend_port} = start_echo_backend()
       on_exit(fn -> :gen_tcp.close(backend_lsock) end)
 
-      host_port = random_high_port()
       svc_name = "port-test-#{:rand.uniform(100_000)}"
+      ref = :"port_integration_#{:rand.uniform(100_000)}"
+
+      # Start listener first (port 0), then configure orchestrator with actual port
+      host_port = start_ranch_listener(ref, DrawbridgeProxy.PortHandler, service_name: svc_name)
 
       service = make_service(svc_name, "#{svc_name}.dev.local", [{host_port, backend_port}])
       :ok = Orchestrator.start(make_config([service]))
-
-      :ok =
-        start_ranch_listener(
-          :"port_integration_#{host_port}",
-          DrawbridgeProxy.PortHandler,
-          host_port,
-          service_name: svc_name
-        )
 
       {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", host_port, [:binary, active: false], 3_000)
       :ok = :gen_tcp.send(sock, "hello from port test")
@@ -220,14 +195,8 @@ defmodule DrawbridgeProxy.IntegrationTest do
     end
 
     test "connection to unknown hostname is dropped" do
-      tls_port = random_high_port()
-
-      :ok =
-        start_ranch_listener(
-          :"sni_unknown_#{tls_port}",
-          DrawbridgeProxy.SniHandler,
-          tls_port
-        )
+      ref = :"sni_unknown_#{:rand.uniform(100_000)}"
+      tls_port = start_ranch_listener(ref, DrawbridgeProxy.SniHandler)
 
       {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", tls_port, [:binary, active: false], 3_000)
       :ok = :gen_tcp.send(sock, client_hello("nonexistent.dev.local"))
@@ -240,19 +209,15 @@ defmodule DrawbridgeProxy.IntegrationTest do
       {backend_lsock, backend_port} = start_echo_backend()
       on_exit(fn -> :gen_tcp.close(backend_lsock) end)
 
-      host_port = random_high_port()
       svc_name = "concurrent-test-#{:rand.uniform(100_000)}"
+      ref = :"port_concurrent_#{:rand.uniform(100_000)}"
+
+      # Start listener first (port 0), then configure orchestrator with actual port
+      host_port =
+        start_ranch_listener(ref, DrawbridgeProxy.PortHandler, service_name: svc_name)
 
       service = make_service(svc_name, "#{svc_name}.dev.local", [{host_port, backend_port}])
       :ok = Orchestrator.start(make_config([service]))
-
-      :ok =
-        start_ranch_listener(
-          :"port_concurrent_#{host_port}",
-          DrawbridgeProxy.PortHandler,
-          host_port,
-          service_name: svc_name
-        )
 
       tasks =
         for i <- 1..5 do

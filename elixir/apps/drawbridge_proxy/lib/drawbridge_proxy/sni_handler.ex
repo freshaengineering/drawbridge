@@ -99,6 +99,11 @@ defmodule DrawbridgeProxy.SniHandler do
     do: handle_common(event_type, event, :waiting_hello, data)
 
   # ---- connecting_backend ----
+  # TODO: Dead code — `ServiceManager.request_connection/1` is a blocking GenServer.call
+  # that blocks until the container is ready (or errors). It never returns `{:wait, ref}`,
+  # so this state is unreachable. If we want non-blocking boot-wait behaviour,
+  # `request_connection` would need to return `{:wait, ref}` immediately and send
+  # `{:container_ready, ref, ip, port}` as a message later. See PR #12 review.
 
   def connecting_backend(
         :info,
