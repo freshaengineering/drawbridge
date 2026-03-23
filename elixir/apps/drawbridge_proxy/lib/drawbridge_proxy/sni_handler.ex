@@ -378,8 +378,11 @@ defmodule DrawbridgeProxy.SniHandler do
     |> String.replace("\"", "&quot;")
   end
 
-  defp do_connect_backend(ip, port, _initial_bytes, data) do
+  defp do_connect_backend(ip, port, initial_bytes, data) do
     ip_addr = parse_ip(ip)
+
+    # Push the buffered ClientHello back into the socket so :ssl.handshake sees it
+    :ok = :gen_tcp.unrecv(data.socket, initial_bytes)
 
     # Terminate TLS on the proxy side (backends are plain HTTP)
     paths = DrawbridgeCore.CertManager.cert_paths()
@@ -390,7 +393,7 @@ defmodule DrawbridgeProxy.SniHandler do
       versions: [:"tlsv1.2", :"tlsv1.3"]
     ]
 
-    case :ssl.handshake(data.socket, ssl_opts, 5_000) do
+    case :ssl.handshake(data.socket, ssl_opts, 10_000) do
       {:ok, ssl_socket} ->
         # Connect plain TCP to the backend
         case :gen_tcp.connect(
