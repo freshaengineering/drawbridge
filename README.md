@@ -209,7 +209,10 @@ services:
 ### Run
 
 ```bash
-# Start the proxy (first run generates certs + configures DNS)
+# One-time system setup: generate certs, trust CA, configure DNS resolver
+drawbridge setup [--domain dev.local]
+
+# Start the proxy
 task up
 
 # Develop api-gateway locally — everything else runs in containers:

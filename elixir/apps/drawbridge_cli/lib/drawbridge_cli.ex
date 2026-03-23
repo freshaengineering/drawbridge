@@ -15,6 +15,7 @@ defmodule DrawbridgeCli do
       )
 
     case command do
+      ["setup" | rest] -> Mix.Tasks.Drawbridge.Setup.run(rest)
       ["up" | rest] -> Mix.Tasks.Drawbridge.Up.run(rest)
       ["down" | rest] -> Mix.Tasks.Drawbridge.Down.run(rest)
       ["status" | _] -> Mix.Tasks.Drawbridge.Status.run([])
@@ -57,6 +58,7 @@ defmodule DrawbridgeCli do
     drawbridge — on-demand local dev stack proxy
 
     Usage:
+      drawbridge setup [--domain dev.local]
       drawbridge up [--config path] [--no-dns] [--tui] [--local service ...]
       drawbridge down [--config path] [--keep-dns]
       drawbridge status
