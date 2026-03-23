@@ -165,6 +165,42 @@ tasks:
 
   # ── Release ────────────────────────────────────────────
 
+  build:release:
+    desc: Build release artifacts (escript + Swift binary)
+    cmds:
+      - task: build:release:escript
+      - task: build:release:swift
+
+  build:release:escript:
+    desc: Build Elixir escript
+    dir: "{{.ELIXIR_DIR}}/apps/drawbridge_cli"
+    env:
+      MIX_ENV: prod
+    cmds:
+      - mix deps.get --only prod
+      - mix escript.build
+    generates:
+      - drawbridge
+
+  build:release:swift:
+    desc: Build Swift agent release binary
+    dir: "{{.SWIFT_DIR}}"
+    cmds:
+      - swift build -c release
+    generates:
+      - .build/release/DrawbridgeAgent
+
+  package:
+    desc: Package release tarball
+    deps: [build:release]
+    cmds:
+      - mkdir -p dist
+      - cp {{.ELIXIR_DIR}}/apps/drawbridge_cli/drawbridge dist/drawbridge
+      - cp {{.SWIFT_DIR}}/.build/release/DrawbridgeAgent dist/drawbridge-agent
+      - chmod +x dist/drawbridge dist/drawbridge-agent
+      - cd dist && tar czf drawbridge-v{{.VERSION}}-macos-arm64.tar.gz drawbridge drawbridge-agent
+      - echo "Packaged dist/drawbridge-v{{.VERSION}}-macos-arm64.tar.gz"
+
   version:
     desc: Print current version
     cmds:
@@ -175,3 +211,60 @@ tasks:
     cmds:
       - rm -rf {{.ELIXIR_DIR}}/_build {{.ELIXIR_DIR}}/deps
       - rm -rf {{.SWIFT_DIR}}/.build
+      - rm -rf dist
+
+  # ── Dev ───────────────────────────────────────────────
+
+  dev:install:
+    desc: Install drawbridge for local dev (adds to ../mise.local.toml)
+    cmds:
+      - task: build:release
+      - |
+        DRAWBRIDGE_DIR="$(pwd)"
+        PARENT_MISE="../mise.local.toml"
+
+        # Build the env section pointing to our binaries
+        ESCRIPT_PATH="${DRAWBRIDGE_DIR}/elixir/apps/drawbridge_cli/drawbridge"
+        AGENT_PATH="${DRAWBRIDGE_DIR}/swift/.build/release/DrawbridgeAgent"
+        BIN_DIR="${DRAWBRIDGE_DIR}/dist"
+
+        # Ensure dist has symlinks to the built binaries
+        mkdir -p "${BIN_DIR}"
+        ln -sf "${ESCRIPT_PATH}" "${BIN_DIR}/drawbridge"
+        ln -sf "${AGENT_PATH}" "${BIN_DIR}/drawbridge-agent"
+
+        # Upsert PATH entry in parent mise.local.toml
+        if [ -f "${PARENT_MISE}" ]; then
+          # Check if we already have a drawbridge PATH entry
+          if grep -q "drawbridge" "${PARENT_MISE}"; then
+            echo "Already configured in ${PARENT_MISE}"
+          else
+            printf '\n[env]\nPATH = ["{{.ROOT_DIR}}/dist", "{{"{{"}}env.PATH{{"}}"}}"]' >> "${PARENT_MISE}"
+            echo "Added drawbridge to PATH in ${PARENT_MISE}"
+          fi
+        else
+          cat > "${PARENT_MISE}" << 'MISE'
+        # Local dev tooling — not committed
+        [env]
+        _.path = ["drawbridge/dist"]
+        MISE
+          echo "Created ${PARENT_MISE} with drawbridge in PATH"
+        fi
+      - echo "Run 'drawbridge up' from any sibling project directory"
+
+  dev:uninstall:
+    desc: Remove drawbridge from ../mise.local.toml
+    cmds:
+      - |
+        PARENT_MISE="../mise.local.toml"
+        if [ -f "${PARENT_MISE}" ]; then
+          sed -i '' '/drawbridge/d' "${PARENT_MISE}"
+          echo "Removed drawbridge entries from ${PARENT_MISE}"
+          # Clean up empty file
+          if [ ! -s "${PARENT_MISE}" ]; then
+            rm "${PARENT_MISE}"
+            echo "Removed empty ${PARENT_MISE}"
+          fi
+        else
+          echo "No ${PARENT_MISE} found"
+        fi

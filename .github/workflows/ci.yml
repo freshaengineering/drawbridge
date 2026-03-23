@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MIX_ENV: test
+  ELIXIR_VERSION: "1.19.5"
+  OTP_VERSION: "28.2"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            elixir/deps
+            elixir/_build
+          key: elixir-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
+      - run: mix deps.get
+        working-directory: elixir
+      - run: mix compile --warnings-as-errors
+        working-directory: elixir
+      - run: mix format --check-formatted
+        working-directory: elixir
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            elixir/deps
+            elixir/_build
+          key: elixir-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
+      - run: mix deps.get
+        working-directory: elixir
+      - run: mix test
+        working-directory: elixir
+
+  build-swift:
+    name: Build Swift (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+        working-directory: swift
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drawbridge-agent-${{ matrix.os }}
+          path: swift/.build/release/DrawbridgeAgent
+
+  build-elixir:
+    name: Build Elixir release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      - run: mix deps.get
+        working-directory: elixir
+      - run: MIX_ENV=prod mix escript.build
+        working-directory: elixir/apps/drawbridge_cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drawbridge-escript-${{ matrix.os }}
+          path: elixir/apps/drawbridge_cli/drawbridge
+
+  release:
+    name: Release
+    needs: [lint, test, build-swift, build-elixir]
+    runs-on: macos-15
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release exists
+        id: check
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Skip if release already exists
+        if: steps.check.outputs.exists == 'true'
+        run: echo "Release v${{ steps.version.outputs.version }} already exists, skipping."
+
+      - name: Download artifacts
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package release
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p release
+
+          # Copy escript
+          cp artifacts/drawbridge-escript-macos-15/drawbridge release/drawbridge
+          chmod +x release/drawbridge
+
+          # Copy Swift agent
+          cp artifacts/drawbridge-agent-macos-15/DrawbridgeAgent release/drawbridge-agent
+          chmod +x release/drawbridge-agent
+
+          # Create tarball
+          cd release
+          tar czf "../drawbridge-v${VERSION}-macos-arm64.tar.gz" drawbridge drawbridge-agent
+
+      - name: Upsert tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Delete existing tag if it exists (upsert)
+          git tag -d "v${VERSION}" 2>/dev/null || true
+          git push origin ":refs/tags/v${VERSION}" 2>/dev/null || true
+          # Create new tag pointing at HEAD
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub release
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Extract changelog for this version
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} /^## \[/{found=0} found" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="Release v${VERSION}"
+          fi
+
+          gh release create "v${VERSION}" \
+            "drawbridge-v${VERSION}-macos-arm64.tar.gz" \
+            --title "v${VERSION}" \
+            --notes "${NOTES}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,7 +11,8 @@ defmodule DrawbridgeCli.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      escript: escript()
     ]
   end
 
@@ -19,6 +20,10 @@ defmodule DrawbridgeCli.MixProject do
     [
       extra_applications: [:logger]
     ]
+  end
+
+  defp escript do
+    [main_module: DrawbridgeCli, name: "drawbridge"]
   end
 
   defp deps do
