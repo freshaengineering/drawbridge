@@ -144,6 +144,33 @@ defmodule DrawbridgeProxy.PortHandlerPgTest do
     end
   end
 
+  describe "fragmented StartupMessage" do
+    test "handles StartupMessage split across two TCP segments" do
+      ref = make_ref()
+      port = start_pg_listener(ref)
+      on_exit(fn -> stop_listener(ref) end)
+
+      {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
+
+      # Build a full StartupMessage, then split it in two
+      msg = pg_startup_message("fragmented_db")
+      split_at = 8
+      <<first::binary-size(split_at), rest::binary>> = msg
+
+      # Send just the header (length + version) — handler should buffer
+      :ok = :gen_tcp.send(sock, first)
+      Process.sleep(50)
+
+      # Send the rest of the params
+      :ok = :gen_tcp.send(sock, rest)
+
+      # Handler reassembles, looks up "fragmented_db", finds nothing,
+      # falls back to port routing (no service) — connection closes
+      result = :gen_tcp.recv(sock, 0, 2_000)
+      assert result in [{:error, :closed}, {:error, :econnreset}]
+    end
+  end
+
   describe "oversized buffer" do
     test "drops connection when PG startup buffer exceeds limit" do
       ref = make_ref()

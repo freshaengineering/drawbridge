@@ -113,4 +113,29 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
         err
     end
   end
+
+  @doc """
+  Stop and remove a PG-aware listener by its port.
+
+  PG-aware listeners use `{:pg_listener, port}` as child ID (not
+  `{:port_listener, service_name}`), so `stop_port_listener/1` can't
+  reach them.
+  """
+  @spec stop_pg_listener(non_neg_integer()) :: :ok | {:error, term()}
+  def stop_pg_listener(port) do
+    id = {:pg_listener, port}
+
+    case Supervisor.terminate_child(__MODULE__, id) do
+      :ok ->
+        Supervisor.delete_child(__MODULE__, id)
+        Logger.info("[ListenerSupervisor] stopped pg listener on port #{port}")
+        :ok
+
+      {:error, :not_found} ->
+        :ok
+
+      err ->
+        err
+    end
+  end
 end

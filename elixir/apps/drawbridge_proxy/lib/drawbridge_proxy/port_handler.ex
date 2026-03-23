@@ -289,7 +289,11 @@ defmodule DrawbridgeProxy.PortHandler do
     {:keep_state, data}
   end
 
-  # Unrecognized PG bytes — not a Postgres startup, fall back
+  # Unrecognized PG bytes — not a Postgres startup, fall back.
+  # This also catches CancelRequest (<<16::32, 80877102::32, pid::32, key::32>>)
+  # which is a 16-byte message with no version field. Falling through to port
+  # routing is the correct behaviour: cancel requests are rare and the port
+  # fallback will forward them to the right backend.
   defp handle_pg_bytes(_buf, data, _transport) do
     fallback_to_port_routing(data)
   end
