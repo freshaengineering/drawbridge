@@ -19,15 +19,26 @@ defmodule DrawbridgeCore.ImageResolver do
     {registry, repo, tag} = parse_image(image)
 
     if ecr_registry?(registry) and is_nil(tag) do
-      case resolve_ecr_latest(registry, repo) do
-        {:ok, resolved_tag} ->
-          resolved = "#{registry}/#{repo}:#{resolved_tag}"
-          Logger.info("[ImageResolver] #{image} → #{resolved}")
-          resolved
+      # Check cache first
+      cache_key = {:ecr_tag, registry, repo}
 
-        {:error, reason} ->
-          Logger.error("[ImageResolver] Failed to resolve #{image}: #{reason}")
-          image
+      case :persistent_term.get(cache_key, nil) do
+        nil ->
+          case resolve_ecr_latest(registry, repo) do
+            {:ok, resolved_tag} ->
+              resolved = "#{registry}/#{repo}:#{resolved_tag}"
+              :persistent_term.put(cache_key, resolved)
+              Logger.info("[ImageResolver] #{image} → #{resolved}")
+              resolved
+
+            {:error, reason} ->
+              Logger.error("[ImageResolver] Failed to resolve #{image}: #{reason}")
+              image
+          end
+
+        cached ->
+          Logger.debug("[ImageResolver] #{image} → #{cached} (cached)")
+          cached
       end
     else
       image
