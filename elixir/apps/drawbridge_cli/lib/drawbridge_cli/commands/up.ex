@@ -19,14 +19,14 @@ defmodule Mix.Tasks.Drawbridge.Up do
 
     case DrawbridgeCore.Config.load(config_path) do
       {:ok, config} ->
-        boot(config, opts)
+        boot(config, opts, config_path)
 
       {:error, reason} ->
         Mix.raise("Failed to load config: #{inspect(reason)}")
     end
   end
 
-  defp boot(config, opts) do
+  defp boot(config, opts, config_path) do
     # Start the applications
     Mix.Task.run("app.start")
 
@@ -41,8 +41,8 @@ defmodule Mix.Tasks.Drawbridge.Up do
       DrawbridgeCore.DnsManager.setup(config.domain)
     end
 
-    # Start service orchestrator
-    DrawbridgeCore.Orchestrator.start(config)
+    # Start service orchestrator (pass config_path so lockfile overlay works)
+    DrawbridgeCore.Orchestrator.start(config, config_path: config_path)
 
     # Print status
     print_status(config)

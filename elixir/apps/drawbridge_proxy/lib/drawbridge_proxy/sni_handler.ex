@@ -45,6 +45,8 @@ defmodule DrawbridgeProxy.SniHandler do
       service_name: nil,
       backend_socket: nil,
       wait_ref: nil,
+      conn_ref: make_ref(),
+      protocol_detected: false,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
       msg_error: msg_error,
@@ -136,6 +138,8 @@ defmodule DrawbridgeProxy.SniHandler do
         {msg_ok, socket, chunk},
         %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data
       ) do
+    data = maybe_detect_protocol(chunk, data)
+
     case :gen_tcp.send(backend, chunk) do
       :ok ->
         transport.setopts(socket, active: :once)
@@ -192,11 +196,26 @@ defmodule DrawbridgeProxy.SniHandler do
       DrawbridgeCore.Telemetry.emit_connection_stop(data.service_name, duration)
     end
 
+    if data[:service_name] && data[:conn_ref] do
+      DrawbridgeProxy.ProtocolRegistry.delete(data.service_name, data.conn_ref)
+    end
+
     close_sockets(data)
     :ok
   end
 
   # ---- private ----
+
+  defp maybe_detect_protocol(_chunk, %{protocol_detected: true} = data), do: data
+  defp maybe_detect_protocol(_chunk, %{service_name: nil} = data), do: data
+
+  defp maybe_detect_protocol(_chunk, %{service_name: svc, conn_ref: ref} = data) do
+    # For TLS connections we can't inspect the encrypted payload,
+    # so we just record :tls with the SNI hostname
+    meta = %{protocol: :tls, details: %{sni_hostname: svc}}
+    DrawbridgeProxy.ProtocolRegistry.store(svc, ref, meta)
+    %{data | protocol_detected: true}
+  end
 
   defp do_sni_lookup(hostname, buffered, data) do
     case DrawbridgeCore.ServiceManager.request_connection(hostname) do

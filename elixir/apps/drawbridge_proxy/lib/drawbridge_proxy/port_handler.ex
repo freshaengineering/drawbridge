@@ -19,6 +19,9 @@ defmodule DrawbridgeProxy.PortHandler do
 
   @backend_connect_timeout 5_000
   @boot_wait_timeout 30_000
+  # Only parse first 4KB of a chunk for protocol detection to avoid
+  # excessive allocation from large pipelined requests or payloads.
+  @max_detect_bytes 4_096
 
   # ---- Ranch protocol entry point ----
 
@@ -44,6 +47,8 @@ defmodule DrawbridgeProxy.PortHandler do
       service_name: service_name,
       backend_socket: nil,
       wait_ref: nil,
+      conn_ref: make_ref(),
+      protocol_detected: false,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
       msg_error: msg_error,
@@ -117,6 +122,8 @@ defmodule DrawbridgeProxy.PortHandler do
         {msg_ok, socket, chunk},
         %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data
       ) do
+    data = maybe_detect_protocol(chunk, data)
+
     case :gen_tcp.send(backend, chunk) do
       :ok ->
         transport.setopts(socket, active: :once)
@@ -173,11 +180,35 @@ defmodule DrawbridgeProxy.PortHandler do
       DrawbridgeCore.Telemetry.emit_connection_stop(data.service_name, duration)
     end
 
+    if data[:service_name] && data[:conn_ref] do
+      DrawbridgeProxy.ProtocolRegistry.delete(data.service_name, data.conn_ref)
+    end
+
     close_sockets(data)
     :ok
   end
 
   # ---- private ----
+
+  defp maybe_detect_protocol(_chunk, %{protocol_detected: true} = data), do: data
+  defp maybe_detect_protocol(_chunk, %{service_name: nil} = data), do: data
+
+  defp maybe_detect_protocol(chunk, %{service_name: svc, conn_ref: ref} = data) do
+    detect_chunk =
+      if byte_size(chunk) > @max_detect_bytes,
+        do: binary_part(chunk, 0, @max_detect_bytes),
+        else: chunk
+
+    case DrawbridgeProxy.Protocol.detect_all(detect_chunk) do
+      {:ok, meta} ->
+        DrawbridgeProxy.ProtocolRegistry.store(svc, ref, meta)
+
+      :unknown ->
+        :ok
+    end
+
+    %{data | protocol_detected: true}
+  end
 
   defp do_connect_backend(ip, port, data) do
     ip_addr = parse_ip(ip)

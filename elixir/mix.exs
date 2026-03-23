@@ -26,6 +26,7 @@ defmodule Drawbridge.MixProject do
         applications: [
           drawbridge_core: :permanent,
           drawbridge_proxy: :permanent,
+          drawbridge_api: :permanent,
           drawbridge_tui: :permanent,
           drawbridge_cli: :permanent
         ]

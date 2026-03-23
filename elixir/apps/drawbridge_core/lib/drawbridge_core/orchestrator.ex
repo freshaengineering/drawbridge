@@ -6,7 +6,9 @@ defmodule DrawbridgeCore.Orchestrator do
   """
 
   @doc "Start ServiceManagers for all configured services."
-  def start(%DrawbridgeCore.Config{} = config) do
+  def start(%DrawbridgeCore.Config{} = config, opts \\ []) do
+    config = maybe_overlay_lockfile(config, opts)
+
     Enum.each(config.services, fn {_name, service} ->
       case DrawbridgeCore.ServiceManager.start_service(service) do
         {:ok, _pid} -> :ok
@@ -16,6 +18,13 @@ defmodule DrawbridgeCore.Orchestrator do
     end)
 
     :ok
+  end
+
+  defp maybe_overlay_lockfile(config, opts) do
+    case Keyword.get(opts, :config_path) do
+      nil -> config
+      config_path -> DrawbridgeCore.Lockfile.load_and_overlay(config, config_path)
+    end
   end
 
   @doc "Stop all running containers and their service managers."
