@@ -27,7 +27,9 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | Image pull progress | **Done** | Real-time layer download progress streamed to TUI |
 | TUI | **Done** | Terminal UI with keyboard navigation, dependency graph, flash messages |
 | `--local` dev mode | **Done** | Skip container orchestration for services you're running from source |
+| One-command setup | **Done** | `drawbridge setup` handles CA trust, DNS, and cert generation in one idempotent step |
 | Registry auth | **Done** | `drawbridge auth` logs in to GHCR/ECR registries detected from config |
+| Container-to-host networking | **Done** | Containers reach host services via gateway IP rewriting in env vars |
 
 ## How it works
 

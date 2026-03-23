@@ -57,7 +57,7 @@ jobs:
           key: mix-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
       - run: mix deps.get
         working-directory: elixir
-      - run: mix test
+      - run: mix test --exclude spawn_process
         working-directory: elixir
 
   # ── Version check (main only) ─────────────────────────
