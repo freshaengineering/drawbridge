@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ETS-backed `ProtocolRegistry` for storing per-connection protocol metadata (keyed by service + connection ref)
 - Optional `protocol` hint field on `Config.Service` for explicit protocol declaration
 - SniHandler records `:tls` protocol with SNI hostname; PortHandler runs full protocol detection on raw TCP
+- TUI dashboard via Owl LiveScreen — live-updating service table with color-coded states, uptime, and connection counts
+- `drawbridge tui` command and `drawbridge up --tui` flag
+- New `drawbridge_tui` umbrella app with ServiceSubscriber (1s polling) and Dashboard renderer
 
 ## [0.1.0] - 2026-03-16
 
