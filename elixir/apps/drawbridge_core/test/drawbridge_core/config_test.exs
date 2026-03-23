@@ -159,4 +159,96 @@ defmodule DrawbridgeCore.ConfigTest do
   test "missing file returns error" do
     assert {:error, _} = Config.load("/tmp/nonexistent_drawbridge_#{:rand.uniform()}.yml")
   end
+
+  test "parses database field for Postgres routing", %{path: path} do
+    yaml = """
+    domain: test.local
+    services:
+      pg:
+        image: postgres:16
+        hostname: pg.test.local
+        ports:
+          - "5432:5432"
+        database: myapp_dev
+    """
+
+    write_yaml(path, yaml)
+    {:ok, config} = Config.load(path)
+    assert config.services["pg"].database == "myapp_dev"
+  end
+
+  test "database defaults to nil when not set", %{path: path} do
+    write_yaml(path, @valid_yaml)
+    {:ok, config} = Config.load(path)
+    assert config.services["postgres"].database == nil
+  end
+
+  test "allows duplicate host ports when services use different database names", %{path: path} do
+    yaml = """
+    domain: test.local
+    services:
+      pg_users:
+        image: postgres:16
+        hostname: pg1.test.local
+        ports:
+          - "5432:5432"
+        database: users_dev
+      pg_platform:
+        image: postgres:16
+        hostname: pg2.test.local
+        ports:
+          - "5432:5432"
+        database: platform_dev
+    """
+
+    write_yaml(path, yaml)
+    assert {:ok, config} = Config.load(path)
+    assert config.services["pg_users"].database == "users_dev"
+    assert config.services["pg_platform"].database == "platform_dev"
+  end
+
+  test "rejects duplicate database names", %{path: path} do
+    yaml = """
+    domain: test.local
+    services:
+      pg1:
+        image: postgres:16
+        hostname: pg1.test.local
+        ports:
+          - "5432:5432"
+        database: same_db
+      pg2:
+        image: postgres:16
+        hostname: pg2.test.local
+        ports:
+          - "5432:5432"
+        database: same_db
+    """
+
+    write_yaml(path, yaml)
+    assert {:error, msg} = Config.load(path)
+    assert msg =~ "duplicate database"
+  end
+
+  test "rejects database-routed and plain services sharing a port", %{path: path} do
+    yaml = """
+    domain: test.local
+    services:
+      pg_db:
+        image: postgres:16
+        hostname: pg1.test.local
+        ports:
+          - "5432:5432"
+        database: mydb
+      pg_plain:
+        image: postgres:16
+        hostname: pg2.test.local
+        ports:
+          - "5432:5432"
+    """
+
+    write_yaml(path, yaml)
+    assert {:error, msg} = Config.load(path)
+    assert msg =~ "database-routed and plain"
+  end
 end

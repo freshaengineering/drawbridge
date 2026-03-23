@@ -7,9 +7,15 @@ defmodule DrawbridgeProxy.PortHandler do
   the connection arrived on. The service name is passed via Ranch protocol
   opts when the listener is started.
 
+  For Postgres-aware ports (`pg_aware: true`), the handler buffers the
+  initial bytes to extract the database name from the StartupMessage and
+  routes to the correct service by database. Falls back to port-based
+  routing when no database match is found.
+
   State machine:
-    connecting  ->  waiting_boot  ->  relaying
-               \\->  relaying (immediate, if container already up)
+    connecting        ->  waiting_boot  ->  relaying
+                     \\->  relaying (immediate, if container already up)
+    waiting_pg_startup -> connecting (after database extraction)
   """
 
   @behaviour :ranch_protocol
@@ -19,6 +25,8 @@ defmodule DrawbridgeProxy.PortHandler do
 
   @backend_connect_timeout 5_000
   @boot_wait_timeout 30_000
+  @pg_startup_timeout 5_000
+  @max_pg_buffer 4_096
   # Only parse first 4KB of a chunk for protocol detection to avoid
   # excessive allocation from large pipelined requests or payloads.
   @max_detect_bytes 4_096
@@ -37,9 +45,8 @@ defmodule DrawbridgeProxy.PortHandler do
     # Ranch 2.x transport.messages/0 returns {ok, closed, error, passive}
     {msg_ok, msg_closed, msg_error, _msg_passive} = transport.messages()
 
-    service_name = Keyword.fetch!(opts, :service_name)
-
-    DrawbridgeCore.Telemetry.emit_connection_start(service_name, :port)
+    service_name = Keyword.get(opts, :service_name)
+    pg_aware = Keyword.get(opts, :pg_aware, false)
 
     data = %{
       transport: transport,
@@ -49,18 +56,68 @@ defmodule DrawbridgeProxy.PortHandler do
       wait_ref: nil,
       conn_ref: make_ref(),
       protocol_detected: false,
+      pg_aware: pg_aware,
+      buffer: <<>>,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
       msg_error: msg_error,
       started_at: System.monotonic_time(:millisecond)
     }
 
-    actions = [{:state_timeout, 0, :do_connect}]
-    :gen_statem.enter_loop(__MODULE__, [], :connecting, data, actions)
+    if pg_aware do
+      actions = [{:state_timeout, @pg_startup_timeout, :pg_timeout}]
+      :gen_statem.enter_loop(__MODULE__, [], :waiting_pg_startup, data, actions)
+    else
+      DrawbridgeCore.Telemetry.emit_connection_start(service_name, :port)
+      actions = [{:state_timeout, 0, :do_connect}]
+      :gen_statem.enter_loop(__MODULE__, [], :connecting, data, actions)
+    end
   end
 
   @impl :gen_statem
   def callback_mode, do: :state_functions
+
+  # ---- waiting_pg_startup — buffer PG startup bytes ----
+
+  def waiting_pg_startup(
+        :info,
+        {msg_ok, socket, chunk},
+        %{msg_ok: msg_ok, socket: socket, transport: transport, buffer: buf} = data
+      ) do
+    new_buf = buf <> chunk
+
+    cond do
+      byte_size(new_buf) > @max_pg_buffer ->
+        Logger.debug("[PortHandler] PG startup buffer exceeded, dropping")
+        {:stop, :normal}
+
+      true ->
+        handle_pg_bytes(new_buf, %{data | buffer: new_buf}, transport)
+    end
+  end
+
+  def waiting_pg_startup(:state_timeout, :pg_timeout, data) do
+    # Timed out waiting for PG startup — not a Postgres client. Pass the
+    # buffered bytes through as regular port-based traffic.
+    Logger.debug("[PortHandler] PG startup timeout, falling back to port routing")
+    fallback_to_port_routing(data)
+  end
+
+  def waiting_pg_startup(:info, {msg_closed, socket}, %{msg_closed: msg_closed, socket: socket}) do
+    {:stop, :normal}
+  end
+
+  def waiting_pg_startup(
+        :info,
+        {msg_error, socket, reason},
+        %{msg_error: msg_error, socket: socket}
+      ) do
+    Logger.debug("[PortHandler] client error in waiting_pg_startup: #{inspect(reason)}")
+    {:stop, :normal}
+  end
+
+  def waiting_pg_startup(event_type, event, data),
+    do: handle_common(event_type, event, :waiting_pg_startup, data)
 
   # ---- connecting — initial state ----
 
@@ -123,6 +180,7 @@ defmodule DrawbridgeProxy.PortHandler do
         %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data
       ) do
     data = maybe_detect_protocol(chunk, data)
+    DrawbridgeCore.ServiceManager.ack(data.service_name)
 
     case :gen_tcp.send(backend, chunk) do
       :ok ->
@@ -140,6 +198,8 @@ defmodule DrawbridgeProxy.PortHandler do
         {:tcp, socket, chunk},
         %{backend_socket: socket, socket: client, transport: transport} = data
       ) do
+    DrawbridgeCore.ServiceManager.ack(data.service_name)
+
     case transport.send(client, chunk) do
       :ok ->
         :inet.setopts(socket, active: :once)
@@ -188,6 +248,83 @@ defmodule DrawbridgeProxy.PortHandler do
     :ok
   end
 
+  # ---- private: Postgres startup handling ----
+
+  # SSLRequest — deny with 'N', client retries with plain StartupMessage
+  defp handle_pg_bytes(<<8::32, 80_877_103::32, rest::binary>>, data, transport) do
+    :ok = transport.send(data.socket, <<"N">>)
+    :ok = transport.setopts(data.socket, active: :once)
+
+    if byte_size(rest) > 0 do
+      handle_pg_bytes(rest, %{data | buffer: rest}, transport)
+    else
+      {:keep_state, %{data | buffer: <<>>}, [{:state_timeout, @pg_startup_timeout, :pg_timeout}]}
+    end
+  end
+
+  # StartupMessage: version 3.0 (196608)
+  defp handle_pg_bytes(
+         <<len::32, 196_608::32, _rest::binary>> = buf,
+         data,
+         _transport
+       )
+       when len > 8 and byte_size(buf) >= len do
+    case DrawbridgeProxy.Protocol.Postgres.detect(buf) do
+      {:ok, %{details: %{database: db}}} when is_binary(db) ->
+        resolve_by_database(db, data)
+
+      _ ->
+        # Postgres startup but no database param — fall back
+        fallback_to_port_routing(data)
+    end
+  end
+
+  # We have a partial StartupMessage header — need more bytes
+  defp handle_pg_bytes(<<len::32, 196_608::32, _rest::binary>> = buf, data, transport)
+       when len > 8 and byte_size(buf) < len do
+    :ok = transport.setopts(data.socket, active: :once)
+    {:keep_state, data}
+  end
+
+  # Not enough bytes for even a header — keep waiting
+  defp handle_pg_bytes(buf, data, transport) when byte_size(buf) < 8 do
+    :ok = transport.setopts(data.socket, active: :once)
+    {:keep_state, data}
+  end
+
+  # Unrecognized PG bytes — not a Postgres startup, fall back.
+  # This also catches CancelRequest (<<16::32, 80877102::32, pid::32, key::32>>)
+  # which is a 16-byte message with no version field. Falling through to port
+  # routing is the correct behaviour: cancel requests are rare and the port
+  # fallback will forward them to the right backend.
+  defp handle_pg_bytes(_buf, data, _transport) do
+    fallback_to_port_routing(data)
+  end
+
+  defp resolve_by_database(database, data) do
+    case DrawbridgeCore.ServiceRegistry.lookup_by_database(database) do
+      {:ok, {_pid, service_name}} ->
+        Logger.debug("[PortHandler] PG routing database=#{database} -> #{service_name}")
+        data = %{data | service_name: service_name}
+        DrawbridgeCore.Telemetry.emit_connection_start(service_name, :database)
+        {:next_state, :connecting, data, [{:state_timeout, 0, :do_connect}]}
+
+      :error ->
+        Logger.debug("[PortHandler] no service for database=#{database}, falling back to port")
+        fallback_to_port_routing(data)
+    end
+  end
+
+  defp fallback_to_port_routing(%{service_name: nil} = _data) do
+    Logger.debug("[PortHandler] PG-aware port has no fallback service, dropping")
+    {:stop, :normal}
+  end
+
+  defp fallback_to_port_routing(%{service_name: svc} = data) do
+    DrawbridgeCore.Telemetry.emit_connection_start(svc, :port)
+    {:next_state, :connecting, data, [{:state_timeout, 0, :do_connect}]}
+  end
+
   # ---- private ----
 
   defp maybe_detect_protocol(_chunk, %{protocol_detected: true} = data), do: data
@@ -220,6 +357,12 @@ defmodule DrawbridgeProxy.PortHandler do
            @backend_connect_timeout
          ) do
       {:ok, backend_socket} ->
+        buf = Map.get(data, :buffer, <<>>)
+
+        if byte_size(buf) > 0 do
+          :ok = :gen_tcp.send(backend_socket, buf)
+        end
+
         :ok = data.transport.setopts(data.socket, active: :once)
         Logger.debug("[PortHandler] relaying #{data.service_name} -> #{ip}:#{port}")
         {:next_state, :relaying, %{data | backend_socket: backend_socket}}

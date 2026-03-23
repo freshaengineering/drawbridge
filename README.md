@@ -10,6 +10,7 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 |---------|--------|-------------|
 | SNI-based TLS routing | **Done** | Extracts hostname from TLS ClientHello, routes to the right container |
 | Port-based TCP routing | **Done** | Non-TLS services (Postgres, Redis, Kafka) routed by port number |
+| PG database routing | **Done** | Multiple Postgres services share port 5432, routed by database name from StartupMessage |
 | Lazy container boot | **Done** | Containers start on first request, not at startup |
 | Idle sleep | **Done** | Containers stop after configurable idle timeout (default 5m) |
 | Connection queuing | **Done** | Requests queue during boot — zero dropped connections |
@@ -55,7 +56,7 @@ curl https://api.b2c.dev.local
 
 **The key insight**: TLS connections advertise the target hostname in plaintext via the SNI extension *before* encryption begins. The proxy reads this, decides which container should handle it, boots it if needed, then passes the raw TCP stream through untouched.
 
-Non-TLS services (Postgres on 5432, Redis on 6379, etc.) are routed by port number instead.
+Non-TLS services (Redis on 6379, Kafka on 9092, etc.) are routed by port number. Postgres services can additionally be routed by database name extracted from the wire protocol StartupMessage, allowing multiple PG instances to share port 5432.
 
 ## Quickstart
 
@@ -294,6 +295,15 @@ $ task status
   ...
 ```
 
+## Example configs
+
+See `config/examples/` for configs tailored to common stacks:
+
+- [`minimal.drawbridge.yml`](config/examples/minimal.drawbridge.yml) — single service + Postgres
+- [`node-fullstack.drawbridge.yml`](config/examples/node-fullstack.drawbridge.yml) — Node.js API + Postgres + Redis
+- [`elixir-phoenix.drawbridge.yml`](config/examples/elixir-phoenix.drawbridge.yml) — Phoenix + Postgres + Redis + Elasticsearch
+- [`microservices.drawbridge.yml`](config/examples/microservices.drawbridge.yml) — gRPC services with dependency chains
+
 ## Configuration reference
 
 ### Service options
@@ -308,6 +318,7 @@ $ task status
 | `boot_timeout` | `30` | Max seconds to wait for health check |
 | `health_check` | TCP connect | Shell command to verify readiness |
 | `tls_backend` | `false` | Whether the container expects TLS |
+| `database` | `nil` | Postgres database name for wire-protocol routing (multiple services can share a port) |
 | `depends_on` | `[]` | Services that must be running first |
 
 ### Global options

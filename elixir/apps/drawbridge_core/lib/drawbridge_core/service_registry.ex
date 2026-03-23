@@ -8,8 +8,10 @@ defmodule DrawbridgeCore.ServiceRegistry do
 
   @registry DrawbridgeCore.ServiceRegistry
 
-  @doc "Register a service with lookup keys for hostname and ports."
-  def register_service(name, hostname, ports) do
+  @doc "Register a service with lookup keys for hostname, ports, and optionally database."
+  def register_service(name, hostname, ports, opts \\ []) do
+    database = Keyword.get(opts, :database)
+
     # Register by name
     Registry.register(@registry, {:name, name}, %{hostname: hostname, ports: ports})
 
@@ -18,10 +20,16 @@ defmodule DrawbridgeCore.ServiceRegistry do
       Registry.register(@registry, {:hostname, hostname}, %{name: name})
     end
 
-    # Register by each host port
-    Enum.each(ports, fn {host_port, _container_port} ->
-      Registry.register(@registry, {:port, host_port}, %{name: name})
-    end)
+    # Database-routed services share a port — skip per-port registration
+    unless database do
+      Enum.each(ports, fn {host_port, _container_port} ->
+        Registry.register(@registry, {:port, host_port}, %{name: name})
+      end)
+    end
+
+    if database do
+      Registry.register(@registry, {:database, database}, %{name: name})
+    end
 
     :ok
   end
@@ -38,6 +46,14 @@ defmodule DrawbridgeCore.ServiceRegistry do
   def lookup_by_port(port) do
     case Registry.lookup(@registry, {:port, port}) do
       [{pid, _meta}] -> {:ok, pid}
+      [] -> :error
+    end
+  end
+
+  @doc "Look up a service by database name. Returns `{:ok, {pid, service_name}}` or `:error`."
+  def lookup_by_database(database) do
+    case Registry.lookup(@registry, {:database, database}) do
+      [{pid, %{name: name}}] -> {:ok, {pid, name}}
       [] -> :error
     end
   end

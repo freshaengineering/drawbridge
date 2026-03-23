@@ -1,0 +1,85 @@
+# Microservices — multiple services with dependency chains, mixed protocols
+# Demonstrates gRPC ports, per-service timeouts, and layered dependencies
+domain: dev.local
+idle_timeout: 300
+max_containers: 12
+
+services:
+  # --- Infrastructure ---
+
+  postgres:
+    image: postgres:16
+    hostname: postgres.dev.local
+    ports:
+      - "5432:5432"
+    env:
+      POSTGRES_PASSWORD: dev
+    idle_timeout: 1800
+
+  redis:
+    image: redis:7
+    hostname: redis.dev.local
+    ports:
+      - "6379:6379"
+    idle_timeout: 1800
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka.dev.local
+    ports:
+      - "9092:9092"
+    env:
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka.dev.local:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+    boot_timeout: 45
+    idle_timeout: 1800
+
+  # --- gRPC services ---
+  # Each gets its own host port — drawbridge routes by port number
+
+  users-service:
+    image: ghcr.io/yourorg/users-service:latest
+    hostname: users.dev.local
+    ports:
+      - "50051:50051"              # gRPC
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/users_dev"
+      REDIS_URL: "redis://redis.dev.local:6379"
+    depends_on: [postgres, redis]
+
+  orders-service:
+    image: ghcr.io/yourorg/orders-service:latest
+    hostname: orders.dev.local
+    ports:
+      - "50052:50051"              # Different host port, same container port
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/orders_dev"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+      USERS_GRPC_URL: "users.dev.local:50051"
+    depends_on: [postgres, kafka, users-service]
+
+  notifications-service:
+    image: ghcr.io/yourorg/notifications-service:latest
+    hostname: notifications.dev.local
+    ports:
+      - "50053:50051"
+    env:
+      REDIS_URL: "redis://redis.dev.local:6379"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    depends_on: [redis, kafka]
+    idle_timeout: 120              # Low-traffic service — sleep faster
+
+  # --- API gateway (HTTP → gRPC fan-out) ---
+
+  api-gateway:
+    image: ghcr.io/yourorg/api-gateway:latest
+    hostname: api.dev.local
+    ports:
+      - "443:3000"                 # TLS SNI-routed
+    env:
+      USERS_GRPC_URL: "users.dev.local:50051"
+      ORDERS_GRPC_URL: "orders.dev.local:50052"
+      NOTIFICATIONS_GRPC_URL: "notifications.dev.local:50053"
+      REDIS_URL: "redis://redis.dev.local:6379"
+    depends_on: [redis]            # Only hard dep — gRPC services boot on demand
+    boot_timeout: 15

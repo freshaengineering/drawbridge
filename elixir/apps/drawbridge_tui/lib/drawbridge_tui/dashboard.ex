@@ -3,12 +3,13 @@ defmodule DrawbridgeTui.Dashboard do
   Owl LiveScreen-based dashboard rendering.
 
   Receives service data from ServiceSubscriber and renders a live-updating
-  table with color-coded states.
+  table with color-coded states, selection highlight, and dependency graph.
   """
 
   use GenServer
 
   @name __MODULE__
+  @flash_duration 2_000
 
   # -- Public API --
 
@@ -25,6 +26,19 @@ defmodule DrawbridgeTui.Dashboard do
   def pull_progress(data) do
     GenServer.cast(@name, {:pull_progress, data})
   end
+  @doc "Move selection to next service."
+  def select_next, do: GenServer.cast(@name, :select_next)
+
+  @doc "Move selection to previous service."
+  def select_prev, do: GenServer.cast(@name, :select_prev)
+
+  @doc "Execute an action on the selected service."
+  def action(act) when act in [:boot, :stop, :restart] do
+    GenServer.cast(@name, {:action, act})
+  end
+
+  @doc "Toggle help overlay."
+  def toggle_help, do: GenServer.cast(@name, :toggle_help)
 
   # -- Callbacks --
 
@@ -33,6 +47,18 @@ defmodule DrawbridgeTui.Dashboard do
     domain = Keyword.get(opts, :domain, "dev.local")
     Owl.LiveScreen.add_block(:dashboard, state: render([], domain, %{}))
     {:ok, %{domain: domain, pull_progress: %{}}}
+
+    state = %{
+      domain: domain,
+      services: [],
+      selected_index: 0,
+      flash: nil,
+      flash_timer: nil,
+      show_help: false
+    }
+
+    Owl.LiveScreen.add_block(:dashboard, state: render_all(state))
+    {:ok, state}
   end
 
   @impl true
@@ -49,6 +75,10 @@ defmodule DrawbridgeTui.Dashboard do
     state = %{state | pull_progress: pull_progress}
 
     Owl.LiveScreen.update(:dashboard, render(services, state.domain, state.pull_progress))
+    state = %{state | services: services}
+    # Clamp selection if services list shrunk
+    state = clamp_selection(state)
+    Owl.LiveScreen.update(:dashboard, render_all(state))
     {:noreply, state}
   end
 
@@ -58,11 +88,99 @@ defmodule DrawbridgeTui.Dashboard do
     pull_progress = Map.put(state.pull_progress, image, progress)
     {:noreply, %{state | pull_progress: pull_progress}}
   end
+  def handle_cast(:select_next, state) do
+    count = length(state.services)
+
+    state =
+      if count > 0 do
+        %{state | selected_index: rem(state.selected_index + 1, count)}
+      else
+        state
+      end
+
+    Owl.LiveScreen.update(:dashboard, render_all(state))
+    {:noreply, state}
+  end
+
+  def handle_cast(:select_prev, state) do
+    count = length(state.services)
+
+    state =
+      if count > 0 do
+        new_idx = state.selected_index - 1
+        new_idx = if new_idx < 0, do: count - 1, else: new_idx
+        %{state | selected_index: new_idx}
+      else
+        state
+      end
+
+    Owl.LiveScreen.update(:dashboard, render_all(state))
+    {:noreply, state}
+  end
+
+  def handle_cast({:action, act}, state) do
+    case selected_service(state) do
+      nil ->
+        {:noreply, state}
+
+      svc ->
+        execute_action(act, svc.name)
+        label = action_label(act)
+        if state.flash_timer, do: Process.cancel_timer(state.flash_timer)
+        timer = Process.send_after(self(), :clear_flash, @flash_duration)
+        state = %{state | flash: "#{label} #{svc.name}...", flash_timer: timer}
+        Owl.LiveScreen.update(:dashboard, render_all(state))
+        {:noreply, state}
+    end
+  end
+
+  def handle_cast(:toggle_help, state) do
+    state = %{state | show_help: !state.show_help}
+    Owl.LiveScreen.update(:dashboard, render_all(state))
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:clear_flash, state) do
+    state = %{state | flash: nil, flash_timer: nil}
+    Owl.LiveScreen.update(:dashboard, render_all(state))
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state), do: {:noreply, state}
 
   # -- Rendering --
 
+  defp render_all(state) do
+    parts = render(state.services, state.domain, state.selected_index)
+
+    parts =
+      if state.services != [] do
+        parts ++ [render_deps(state.services)]
+      else
+        parts
+      end
+
+    parts =
+      if state.flash do
+        parts ++ ["\n", Owl.Data.tag("  #{state.flash}", :yellow)]
+      else
+        parts
+      end
+
+    parts =
+      if state.show_help do
+        parts ++ ["\n", render_help()]
+      else
+        parts
+      end
+
+    parts
+  end
+
   @doc false
   def render(services, domain, pull_progress \\ %{}) do
+  def render(services, domain, selected_index \\ -1) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%H:%M:%S UTC")
 
     header =
@@ -75,6 +193,7 @@ defmodule DrawbridgeTui.Dashboard do
 
     col_header =
       [
+        "  ",
         pad("Service", 18),
         pad("State", 12),
         pad("Hostname", 28),
@@ -85,9 +204,16 @@ defmodule DrawbridgeTui.Dashboard do
       |> Owl.Data.tag(:faint)
 
     rows = Enum.map(services, &render_row(&1, pull_progress))
+    rows =
+      services
+      |> Enum.with_index()
+      |> Enum.map(fn {svc, idx} -> render_row(svc, idx == selected_index) end)
 
     footer =
-      Owl.Data.tag("  keybindings coming soon: q quit  •  b boot  •  s stop", :faint)
+      Owl.Data.tag(
+        "  q quit │ j/k navigate │ b boot │ s stop │ r restart │ ? help",
+        :faint
+      )
 
     [header_line, "\n", separator, "\n", col_header, "\n"]
     |> then(fn parts ->
@@ -101,6 +227,7 @@ defmodule DrawbridgeTui.Dashboard do
   end
 
   defp render_row(svc, pull_progress) do
+  defp render_row(svc, selected?) do
     state_tag = state_color(svc.state)
 
     ports =
@@ -108,6 +235,10 @@ defmodule DrawbridgeTui.Dashboard do
       |> Enum.map_join(", ", fn {h, c} -> "#{h}:#{c}" end)
 
     base = [
+    marker = if selected?, do: Owl.Data.tag("> ", :bright), else: "  "
+
+    [
+      marker,
       pad(to_string(svc.name), 18),
       pad_tagged(state_tag, 12),
       pad(svc.hostname || "-", 28),
@@ -164,6 +295,44 @@ defmodule DrawbridgeTui.Dashboard do
   end
 
   defp parse_percent(_), do: 0
+  defp render_deps(services) do
+    deps =
+      services
+      |> Enum.filter(fn svc -> Map.get(svc, :depends_on, []) != [] end)
+      |> Enum.sort_by(& &1.name)
+      |> Enum.map(fn svc ->
+        deps_str = svc.depends_on |> Enum.sort() |> Enum.join(", ")
+        "  #{svc.name} → #{deps_str}"
+      end)
+
+    case deps do
+      [] ->
+        ""
+
+      lines ->
+        [
+          "\n",
+          Owl.Data.tag("Dependencies:", :faint),
+          "\n",
+          Owl.Data.tag(Enum.join(lines, "\n"), :faint)
+        ]
+    end
+  end
+
+  defp render_help do
+    Owl.Data.tag(
+      """
+        Keyboard shortcuts:
+          q       Quit drawbridge
+          j / k   Move selection down / up
+          b       Boot selected service
+          s       Stop selected service
+          r       Restart selected service
+          ?       Toggle this help
+      """,
+      :faint
+    )
+  end
 
   defp state_color(:running), do: Owl.Data.tag("running", :green)
   defp state_color(:booting), do: Owl.Data.tag("booting", :yellow)
@@ -196,7 +365,6 @@ defmodule DrawbridgeTui.Dashboard do
   defp pad(str, width), do: String.pad_trailing(str, width)
 
   defp pad_tagged(tagged, width) do
-    # Strip ANSI escapes to get visible character count for padding
     text =
       tagged
       |> Owl.Data.to_chardata()
@@ -206,4 +374,40 @@ defmodule DrawbridgeTui.Dashboard do
     padding = max(0, width - String.length(text))
     [tagged, String.duplicate(" ", padding)]
   end
+
+  # -- Action execution --
+
+  defp execute_action(:boot, name) do
+    Task.start(fn ->
+      DrawbridgeCore.ServiceManager.request_connection(name)
+    end)
+  end
+
+  defp execute_action(:stop, name) do
+    Task.start(fn ->
+      DrawbridgeCore.ServiceManager.stop_service(name)
+    end)
+  end
+
+  defp execute_action(:restart, name) do
+    Task.start(fn ->
+      DrawbridgeCore.ServiceManager.stop_service(name)
+      DrawbridgeCore.ServiceManager.request_connection(name)
+    end)
+  end
+
+  defp selected_service(%{services: services, selected_index: idx}) do
+    Enum.at(services, idx)
+  end
+
+  defp clamp_selection(%{services: []} = state), do: %{state | selected_index: 0}
+
+  defp clamp_selection(state) do
+    max_idx = length(state.services) - 1
+    %{state | selected_index: min(state.selected_index, max_idx)}
+  end
+
+  defp action_label(:boot), do: "Booting"
+  defp action_label(:stop), do: "Stopping"
+  defp action_label(:restart), do: "Restarting"
 end

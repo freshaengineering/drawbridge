@@ -17,6 +17,9 @@ defmodule DrawbridgeTui.Application do
     {:ok, _} =
       Supervisor.start_child(DrawbridgeTui.Supervisor, {DrawbridgeTui.ServiceSubscriber, []})
 
+    {:ok, _} =
+      Supervisor.start_child(DrawbridgeTui.Supervisor, {DrawbridgeTui.InputReader, []})
+
     {:ok, :started}
   end
 end

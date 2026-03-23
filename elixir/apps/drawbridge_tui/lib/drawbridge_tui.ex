@@ -7,8 +7,8 @@ defmodule DrawbridgeTui do
   @doc """
   Start the TUI dashboard. Blocks the caller until the dashboard exits.
 
-  Launches the ServiceSubscriber (polls ServiceManager) and Dashboard
-  (renders to terminal via Owl).
+  Launches the ServiceSubscriber (polls ServiceManager), Dashboard
+  (renders to terminal via Owl), and InputReader (handles keypresses).
   """
   def start(domain \\ "dev.local") do
     {:ok, _} = DrawbridgeTui.Application.start_dashboard(domain)
@@ -16,7 +16,8 @@ defmodule DrawbridgeTui do
   end
 
   defp block_until_quit do
-    # Block until Ctrl+C / q keypress triggers shutdown
+    # InputReader handles 'q' → System.halt(0).
+    # We still need to block the caller so the supervision tree stays alive.
     Process.sleep(:infinity)
   end
 end

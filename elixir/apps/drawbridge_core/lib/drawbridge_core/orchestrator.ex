@@ -20,6 +20,20 @@ defmodule DrawbridgeCore.Orchestrator do
     :ok
   end
 
+  @doc """
+  Return the set of host ports that need a PG-aware listener.
+
+  Groups services with a `database` field by their first host port.
+  Returns a list of `{port, services}` tuples.
+  """
+  def pg_listener_ports(%DrawbridgeCore.Config{} = config) do
+    config.services
+    |> Map.values()
+    |> Enum.filter(& &1.database)
+    |> Enum.group_by(fn svc -> svc.ports |> hd() |> elem(0) end)
+    |> Enum.to_list()
+  end
+
   defp maybe_overlay_lockfile(config, opts) do
     case Keyword.get(opts, :config_path) do
       nil -> config
