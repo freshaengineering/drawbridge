@@ -34,24 +34,44 @@ defmodule DrawbridgeCore.ImageResolver do
     end
   end
 
-  @doc "Resolve all service images in a config, returning updated config."
-  def resolve_config(%DrawbridgeCore.Config{} = config) do
-    ecr_repos =
-      config.services
-      |> Enum.filter(fn {_, svc} ->
-        {registry, _, tag} = parse_image(svc.image)
-        ecr_registry?(registry) and is_nil(tag)
-      end)
+  @doc "Check if an image needs ECR tag resolution."
+  def needs_resolution?(image) do
+    {registry, _repo, tag} = parse_image(image)
+    ecr_registry?(registry) and is_nil(tag)
+  end
 
-    if ecr_repos != [] do
-      names = Enum.map_join(ecr_repos, ", ", fn {name, _} -> name end)
-      Logger.info("[ImageResolver] Resolving latest ECR tags for: #{names}")
+  @doc "Resolve all service images in a config in parallel, returning updated config."
+  def resolve_config_parallel(%DrawbridgeCore.Config{} = config) do
+    to_resolve =
+      Enum.filter(config.services, fn {_, svc} -> needs_resolution?(svc.image) end)
+
+    if to_resolve != [] do
+      names = Enum.map_join(to_resolve, ", ", fn {name, _} -> name end)
+
+      Logger.info(
+        "[ImageResolver] Resolving #{length(to_resolve)} ECR tags in parallel: #{names}"
+      )
     end
+
+    # Resolve in parallel with Task.async_stream
+    resolved =
+      to_resolve
+      |> Task.async_stream(
+        fn {name, svc} -> {name, resolve(svc.image)} end,
+        max_concurrency: 10,
+        timeout: 30_000
+      )
+      |> Enum.reduce(%{}, fn
+        {:ok, {name, image}}, acc -> Map.put(acc, name, image)
+        {:exit, _reason}, acc -> acc
+      end)
 
     updated_services =
       Map.new(config.services, fn {name, svc} ->
-        resolved_image = resolve(svc.image)
-        {name, %{svc | image: resolved_image}}
+        case Map.fetch(resolved, name) do
+          {:ok, image} -> {name, %{svc | image: image}}
+          :error -> {name, svc}
+        end
       end)
 
     %{config | services: updated_services}

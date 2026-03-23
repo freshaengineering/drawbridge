@@ -291,12 +291,22 @@ defmodule DrawbridgeCore.ServiceManager do
     timeout = (service.boot_timeout + 5) * 1_000
 
     Logger.info("[ServiceManager] #{service.name}: starting container (timeout=#{timeout}ms)")
-    Logger.info("[ServiceManager] #{service.name}: pulling and starting #{service.image}")
 
     Task.start(fn ->
+      # Lazy image tag resolution — resolve ECR tags on first connection
+      image =
+        if DrawbridgeCore.ImageResolver.needs_resolution?(service.image) do
+          Logger.info("[ServiceManager] #{service.name}: resolving ECR tag for #{service.image}")
+          DrawbridgeCore.ImageResolver.resolve(service.image)
+        else
+          service.image
+        end
+
+      Logger.info("[ServiceManager] #{service.name}: pulling and starting #{image}")
+
       result =
         swift_bridge().call_agent(
-          {:start, service.name, service.image, service.ports, resolved_env},
+          {:start, service.name, image, service.ports, resolved_env},
           timeout
         )
 

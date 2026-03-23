@@ -10,7 +10,13 @@ defmodule Mix.Tasks.Drawbridge.Up do
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,
-        switches: [config: :string, no_dns: :boolean, tui: :boolean, local: :keep],
+        switches: [
+          config: :string,
+          no_dns: :boolean,
+          tui: :boolean,
+          local: :keep,
+          resolve: :boolean
+        ],
         aliases: [c: :config, l: :local]
       )
 
@@ -56,8 +62,14 @@ defmodule Mix.Tasks.Drawbridge.Up do
       end)
     end
 
-    # Resolve ECR image tags (no-tag → latest from ECR API)
-    config = DrawbridgeCore.ImageResolver.resolve_config(config)
+    # --resolve: eagerly resolve all ECR tags in parallel upfront
+    # Otherwise: lazy resolution happens in ServiceManager on first connection
+    config =
+      if opts[:resolve] do
+        DrawbridgeCore.ImageResolver.resolve_config_parallel(config)
+      else
+        config
+      end
 
     orchestrated_config = DrawbridgeCore.Config.exclude_services(config, local_services)
     DrawbridgeCore.Orchestrator.start(orchestrated_config, config_path: config_path)
