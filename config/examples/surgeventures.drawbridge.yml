@@ -1,0 +1,122 @@
+# surgeventures.drawbridge.yml — org-wide config
+# All B2C stack services. Run `drawbridge up --local <service>` to develop one locally.
+#
+# Registry auth prerequisites:
+#   GitHub Container Registry (app images):
+#     gh auth token | container registry login --username x --password-stdin ghcr.io
+#   AWS ECR (custom elasticsearch image):
+#     aws ecr get-login-password | container registry login --username AWS --password-stdin 514443763038.dkr.ecr.us-east-1.amazonaws.com
+
+domain: dev.local
+idle_timeout: 300
+max_containers: 15
+
+services:
+  # ── Backing services ──────────────────────────────────
+
+  redis:
+    image: redis:7.4.0-alpine
+    hostname: redis.dev.local
+    ports:
+      - "6379:6379"
+    idle_timeout: 1800
+
+  postgres:
+    image: postgis/postgis:17-3.5
+    hostname: postgres.dev.local
+    ports:
+      - "5432:5432"
+    env:
+      POSTGRES_PASSWORD: dev
+    idle_timeout: 1800
+    boot_timeout: 15
+
+  elasticsearch:
+    image: 514443763038.dkr.ecr.us-east-1.amazonaws.com/elasticsearch:9.0.3-elser-v2-e5-small
+    hostname: es.dev.local
+    ports:
+      - "9200:9200"
+    env:
+      bootstrap.memory_lock: "true"
+      discovery.type: single-node
+      ELASTIC_PASSWORD: default_password
+      xpack.security.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms4g -Xmx4g"
+      xpack.license.self_generated.type: trial
+      max_running_jobs: "50"
+      xpack.ml.model_repository: "file:///usr/share/elasticsearch/config/models/."
+      xpack.ml.max_model_memory_limit: "14g"
+      xpack.ml.max_machine_memory_percent: "90"
+    boot_timeout: 90
+    # TODO: cpus: 4 and memory: "14G" — needs Config.Service support for --cpus/--memory flags
+    cpus: 4
+    memory: "14G"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka.dev.local
+    ports:
+      - "9092:9092"
+    env:
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka.dev.local:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+
+  # ── Application services (ghcr.io — private) ─────────
+
+  api-gateway:
+    image: ghcr.io/surgeventures/app-b2c-api-gateway:latest
+    hostname: api.b2c.dev.local
+    ports:
+      - "443:3000"
+    env:
+      ENVIRONMENT: development
+      CACHE_REDIS_URL: "redis://redis.dev.local:6379"
+      BOOKING_FLOW_STATE_REDIS_URL: "redis://redis.dev.local:6379"
+      B2C_USERS_GRPC_URL: "b2c-users.dev.local:50051"
+      PLATFORM_GRPC_URL: "platform.dev.local:50052"
+      MARKETPLACE_SEARCH_GRPC_URL: "search.dev.local:50053"
+      FRESHA_GRPC_URL: "fresha.dev.local:50054"
+      REDIS_HOST: "redis.dev.local"
+      REDIS_PORT: "6379"
+      REDIS_USERNAME: ""
+      REDIS_PASSWORD: ""
+    depends_on: [redis]
+    health_check: "curl -sf http://localhost:3000/health"
+
+  b2c-users:
+    image: ghcr.io/surgeventures/app-b2c-users:latest
+    hostname: b2c-users.dev.local
+    ports:
+      - "50051:50051"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/b2c_users_dev"
+      REDIS_URL: "redis://redis.dev.local:6379"
+    depends_on: [postgres, redis]
+    health_check: "grpc_health_probe -addr=localhost:50051"
+
+  platform:
+    image: ghcr.io/surgeventures/app-shedul-umbrella:latest
+    hostname: platform.dev.local
+    ports:
+      - "50052:50051"
+      - "4000:4000"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/shedul_dev"
+      REDIS_URL: "redis://redis.dev.local:6379"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    depends_on: [postgres, redis, kafka]
+    health_check: "curl -sf http://localhost:4000/health"
+    boot_timeout: 45
+
+  marketplace-search:
+    image: ghcr.io/surgeventures/app-marketplace-search:latest
+    hostname: search.dev.local
+    ports:
+      - "50053:50051"
+    env:
+      DATABASE_URL: "postgres://postgres:dev@postgres.dev.local:5432/marketplace_search_dev"
+      ELASTICSEARCH_URL: "http://es.dev.local:9200"
+      KAFKA_BROKERS: "kafka.dev.local:9092"
+    depends_on: [postgres, elasticsearch, kafka]
+    health_check: "grpc_health_probe -addr=localhost:50051"

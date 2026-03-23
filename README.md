@@ -26,6 +26,7 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | Fallback page | **Done** | 503 HTML page with service list for unknown SNI hostnames |
 | Image pull progress | **Done** | Real-time layer download progress streamed to TUI |
 | TUI | **Done** | Terminal UI with keyboard navigation, dependency graph, flash messages |
+| `--local` dev mode | **Done** | Skip container orchestration for services you're running from source |
 
 ## How it works
 
@@ -112,7 +113,7 @@ Copy the example config (tailored to the Fresha B2C stack):
 cp config/example.drawbridge.yml drawbridge.yml
 ```
 
-The example maps the full B2C consumer flow — comment out whichever service you're developing locally:
+The example maps the full B2C consumer flow. Use `--local` to develop a service from source while the rest run as containers:
 
 ```yaml
 domain: dev.local
@@ -210,6 +211,14 @@ services:
 # Start the proxy (first run generates certs + configures DNS)
 task up
 
+# Develop api-gateway locally — everything else runs in containers:
+drawbridge up --local api-gateway
+# → generates .env.drawbridge with the gateway's env vars
+# → source .env.drawbridge && npm run dev
+
+# Multiple local services:
+drawbridge up --local api-gateway --local b2c-users
+
 # In another terminal — hit the B2C gateway:
 # This auto-boots: redis → api-gateway (and on first API call, postgres → b2c-users → platform)
 curl https://api.b2c.dev.local/health
@@ -305,6 +314,7 @@ See `config/examples/` for configs tailored to common stacks:
 - [`node-fullstack.drawbridge.yml`](config/examples/node-fullstack.drawbridge.yml) — Node.js API + Postgres + Redis
 - [`elixir-phoenix.drawbridge.yml`](config/examples/elixir-phoenix.drawbridge.yml) — Phoenix + Postgres + Redis + Elasticsearch
 - [`microservices.drawbridge.yml`](config/examples/microservices.drawbridge.yml) — gRPC services with dependency chains
+- [`surgeventures.drawbridge.yml`](config/examples/surgeventures.drawbridge.yml) — full B2C stack with private registry images (ghcr.io + ECR)
 
 ## Configuration reference
 
@@ -321,6 +331,8 @@ See `config/examples/` for configs tailored to common stacks:
 | `health_check` | TCP connect | Shell command to verify readiness |
 | `tls_backend` | `false` | Whether the container expects TLS |
 | `database` | `nil` | Postgres database name for wire-protocol routing (multiple services can share a port) |
+| `cpus` | `nil` | CPU limit for container (`--cpus` flag) |
+| `memory` | `nil` | Memory limit for container (`--memory` flag) |
 | `depends_on` | `[]` | Services that must be running first |
 
 ### Global options
