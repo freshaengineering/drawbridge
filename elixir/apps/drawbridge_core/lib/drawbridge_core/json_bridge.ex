@@ -20,7 +20,8 @@ defmodule DrawbridgeCore.JsonBridge do
     ready: false,
     next_id: 1,
     pending: %{},
-    line_buffer: ""
+    line_buffer: "",
+    progress_subscribers: MapSet.new()
   ]
 
   # -- Public API --
@@ -32,6 +33,20 @@ defmodule DrawbridgeCore.JsonBridge do
   @impl DrawbridgeCore.SwiftBridge
   def call_agent(command, timeout \\ 30_000) do
     GenServer.call(__MODULE__, {:call_agent, command, timeout}, timeout)
+  end
+
+  @doc """
+  Subscribe the calling process to pull progress events.
+  The subscriber receives `{:pull_progress, data}` messages where
+  `data` is the decoded progress map from the Swift agent.
+  """
+  def subscribe_progress do
+    GenServer.call(__MODULE__, :subscribe_progress)
+  end
+
+  @doc "Unsubscribe from pull progress events."
+  def unsubscribe_progress do
+    GenServer.call(__MODULE__, :unsubscribe_progress)
   end
 
   # -- GenServer callbacks --
@@ -57,6 +72,15 @@ defmodule DrawbridgeCore.JsonBridge do
   end
 
   @impl true
+  def handle_call(:subscribe_progress, {pid, _}, state) do
+    Process.monitor(pid)
+    {:reply, :ok, %{state | progress_subscribers: MapSet.put(state.progress_subscribers, pid)}}
+  end
+
+  def handle_call(:unsubscribe_progress, {pid, _}, state) do
+    {:reply, :ok, %{state | progress_subscribers: MapSet.delete(state.progress_subscribers, pid)}}
+  end
+
   def handle_call({:call_agent, _command, _timeout}, _from, %{port: nil} = state) do
     {:reply, {:error, :not_connected}, state}
   end
@@ -120,6 +144,10 @@ defmodule DrawbridgeCore.JsonBridge do
     end
   end
 
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    {:noreply, %{state | progress_subscribers: MapSet.delete(state.progress_subscribers, pid)}}
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -178,6 +206,10 @@ defmodule DrawbridgeCore.JsonBridge do
 
   defp handle_json_response(line, state) do
     case Jason.decode(line) do
+      {:ok, %{"progress" => true, "data" => data}} ->
+        broadcast_progress(state, data)
+        state
+
       {:ok, %{"id" => id} = resp} ->
         case Map.pop(state.pending, to_string(id)) do
           {{from, timer}, pending} ->
@@ -202,6 +234,12 @@ defmodule DrawbridgeCore.JsonBridge do
       {:error, _} ->
         Logger.debug("[JsonBridge] Non-JSON from Swift: #{line}")
         state
+    end
+  end
+
+  defp broadcast_progress(state, data) do
+    for pid <- state.progress_subscribers do
+      send(pid, {:pull_progress, data})
     end
   end
 

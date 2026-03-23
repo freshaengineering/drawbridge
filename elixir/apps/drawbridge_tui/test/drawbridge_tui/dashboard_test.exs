@@ -44,6 +44,7 @@ defmodule DrawbridgeTui.DashboardTest do
           name: :postgres,
           state: :running,
           hostname: "postgres.dev.local",
+          image: "postgres:16",
           ports: [{5432, 5432}],
           connections: 2,
           uptime: 150
@@ -52,6 +53,7 @@ defmodule DrawbridgeTui.DashboardTest do
           name: :redis,
           state: :stopped,
           hostname: "redis.dev.local",
+          image: "redis:7",
           ports: [{6379, 6379}],
           connections: 0,
           uptime: nil
@@ -89,6 +91,111 @@ defmodule DrawbridgeTui.DashboardTest do
       assert output =~ "q quit"
       assert output =~ "b boot"
       assert output =~ "s stop"
+    end
+  end
+
+  describe "render/3 with pull progress" do
+    test "renders progress bar for booting service with active pull" do
+      services = [
+        %{
+          name: :search,
+          state: :booting,
+          hostname: "search.dev.local",
+          image: "ghcr.io/app/search:latest",
+          ports: [{50053, 50051}],
+          connections: 0,
+          uptime: nil
+        }
+      ]
+
+      pull_progress = %{
+        "ghcr.io/app/search:latest" => %{
+          "image" => "ghcr.io/app/search:latest",
+          "percent" => "45",
+          "downloaded" => "230MB",
+          "total" => "512MB"
+        }
+      }
+
+      output =
+        Dashboard.render(services, "dev.local", pull_progress)
+        |> Owl.Data.to_chardata()
+        |> IO.chardata_to_string()
+
+      assert output =~ "search"
+      assert output =~ "booting"
+      assert output =~ "Pulling:"
+      assert output =~ "45%"
+      assert output =~ "230MB/512MB"
+    end
+
+    test "does not render progress for running services" do
+      services = [
+        %{
+          name: :postgres,
+          state: :running,
+          hostname: "postgres.dev.local",
+          image: "postgres:16",
+          ports: [{5432, 5432}],
+          connections: 1,
+          uptime: 60
+        }
+      ]
+
+      pull_progress = %{
+        "postgres:16" => %{
+          "image" => "postgres:16",
+          "percent" => "100",
+          "downloaded" => "200MB",
+          "total" => "200MB"
+        }
+      }
+
+      output =
+        Dashboard.render(services, "dev.local", pull_progress)
+        |> Owl.Data.to_chardata()
+        |> IO.chardata_to_string()
+
+      refute output =~ "Pulling:"
+    end
+  end
+
+  describe "render_progress_bar/1" do
+    test "renders 0% progress" do
+      output =
+        Dashboard.render_progress_bar(%{
+          "percent" => "0",
+          "downloaded" => "0MB",
+          "total" => "100MB"
+        })
+        |> Owl.Data.to_chardata()
+        |> IO.chardata_to_string()
+
+      assert output =~ "0%"
+      assert output =~ "0MB/100MB"
+    end
+
+    test "renders 50% progress" do
+      output =
+        Dashboard.render_progress_bar(%{
+          "percent" => "50",
+          "downloaded" => "50MB",
+          "total" => "100MB"
+        })
+        |> Owl.Data.to_chardata()
+        |> IO.chardata_to_string()
+
+      assert output =~ "50%"
+      assert output =~ "50MB/100MB"
+    end
+
+    test "handles nil percent gracefully" do
+      output =
+        Dashboard.render_progress_bar(%{"downloaded" => "?", "total" => "?"})
+        |> Owl.Data.to_chardata()
+        |> IO.chardata_to_string()
+
+      assert output =~ "0%"
     end
   end
 end

@@ -68,6 +68,12 @@ actor ContainerManager {
         return true
     }
 
+    /// Pull image while streaming progress lines via a callback.
+    func pullImageStreaming(image: String, onLine: @Sendable @escaping (String) -> Void) async throws -> Bool {
+        try await runtime.pullStreaming(image: image, onLine: onLine)
+        return true
+    }
+
     // @StableName("container_status")
     func containerStatus(name: String) async -> ContainerState {
         // Refresh from runtime if we have a record

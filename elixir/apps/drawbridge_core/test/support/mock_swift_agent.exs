@@ -62,7 +62,18 @@ defmodule MockAgent do
   defp dispatch("pull", req, id) do
     image = Map.get(req, "image", "")
     if image == "__crash__", do: System.halt(1)
-    ok_json(id, "true")
+
+    # If image starts with "__progress__", emit synthetic progress events
+    if String.starts_with?(image, "__progress__") do
+      for pct <- [25, 50, 75, 100] do
+        progress =
+          ~s({"id":"#{id}","progress":true,"data":{"image":"#{image}","percent":"#{pct}","downloaded":"#{pct}MB","total":"100MB"}})
+
+        IO.puts(progress)
+      end
+    end
+
+    ok_json(id, ~s({"image":"#{image}"}))
   end
 
   defp dispatch("image_inspect", _req, id), do: ok_json(id, ~s("{}"))
