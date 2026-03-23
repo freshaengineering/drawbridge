@@ -35,5 +35,9 @@ defmodule DrawbridgeTui.ServiceSubscriber do
   defp fetch_services do
     DrawbridgeCore.ServiceManager.list_services()
     |> Enum.sort_by(& &1.name)
+  rescue
+    _ -> []
+  catch
+    :exit, _ -> []
   end
 end

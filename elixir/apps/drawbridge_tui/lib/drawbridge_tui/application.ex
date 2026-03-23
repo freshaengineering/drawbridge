@@ -11,14 +11,11 @@ defmodule DrawbridgeTui.Application do
 
   @doc "Start the dashboard processes under the existing supervisor."
   def start_dashboard(domain) do
-    children = [
-      {DrawbridgeTui.Dashboard, domain: domain},
-      {DrawbridgeTui.ServiceSubscriber, []}
-    ]
+    {:ok, _} =
+      Supervisor.start_child(DrawbridgeTui.Supervisor, {DrawbridgeTui.Dashboard, domain: domain})
 
-    Enum.each(children, fn spec ->
-      Supervisor.start_child(DrawbridgeTui.Supervisor, spec)
-    end)
+    {:ok, _} =
+      Supervisor.start_child(DrawbridgeTui.Supervisor, {DrawbridgeTui.ServiceSubscriber, []})
 
     {:ok, :started}
   end

@@ -24,7 +24,7 @@ defmodule DrawbridgeTui.MixProject do
 
   defp deps do
     [
-      {:owl, "~> 0.12"},
+      {:owl, "~> 0.13"},
       {:drawbridge_core, in_umbrella: true}
     ]
   end

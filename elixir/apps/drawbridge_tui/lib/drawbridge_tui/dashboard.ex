@@ -64,7 +64,7 @@ defmodule DrawbridgeTui.Dashboard do
     rows = Enum.map(services, &render_row/1)
 
     footer =
-      Owl.Data.tag("  q quit  •  b boot  •  s stop", :faint)
+      Owl.Data.tag("  keybindings coming soon: q quit  •  b boot  •  s stop", :faint)
 
     [header_line, "\n", separator, "\n", col_header, "\n"]
     |> then(fn parts ->
