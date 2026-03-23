@@ -16,6 +16,7 @@ defmodule DrawbridgeCli do
       ["init" | _] -> Mix.Tasks.Drawbridge.Init.run([])
       ["api" | rest] -> Mix.Tasks.Drawbridge.Api.run(rest)
       ["mcp" | rest] -> Mix.Tasks.Drawbridge.Mcp.run(rest)
+      ["tui" | rest] -> Mix.Tasks.Drawbridge.Tui.run(rest)
       ["version" | _] -> IO.puts("drawbridge #{version()}")
       _ -> usage()
     end
@@ -40,10 +41,11 @@ defmodule DrawbridgeCli do
     drawbridge — on-demand local dev stack proxy
 
     Usage:
-      drawbridge up [--config path] [--no-dns]
+      drawbridge up [--config path] [--no-dns] [--tui]
       drawbridge down [--config path] [--keep-dns]
       drawbridge status
       drawbridge pull [service...] [--all]
+      drawbridge tui [--config path]
       drawbridge init
       drawbridge api [--port 4001] [--config path]
       drawbridge mcp [--config path]

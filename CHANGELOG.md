@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTP daemon mode (`drawbridge api`) with GraphiQL playground at `/` and `/graphql` endpoint
 - `setupPrompt` query returning markdown setup guide for AI agents configuring new projects
 - `schemaSdl` query for runtime schema introspection
+- TUI dashboard via Owl LiveScreen — live-updating service table with color-coded states, uptime, and connection counts
+- `drawbridge tui` command and `drawbridge up --tui` flag
+- New `drawbridge_tui` umbrella app with ServiceSubscriber (1s polling) and Dashboard renderer
 
 ## [0.1.0] - 2026-03-16
 
