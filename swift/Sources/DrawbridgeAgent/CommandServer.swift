@@ -127,7 +127,7 @@ actor CommandServer {
                 writeLine(errorResponse(id: id, msg: "unknown cmd '\(cmd.cmd)'", code: "unknown_command"))
             }
         } catch {
-            writeLine(errorResponse(id: id, msg: error.localizedDescription, code: "runtime_error"))
+            writeLine(errorResponse(id: id, msg: String(describing: error), code: "runtime_error"))
         }
     }
 
