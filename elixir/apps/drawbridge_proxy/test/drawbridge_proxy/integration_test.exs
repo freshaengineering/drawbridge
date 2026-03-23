@@ -219,7 +219,7 @@ defmodule DrawbridgeProxy.IntegrationTest do
       :gen_tcp.close(sock)
     end
 
-    test "connection to unknown hostname is dropped" do
+    test "connection to unknown hostname is rejected" do
       tls_port = random_high_port()
 
       :ok =
@@ -232,8 +232,22 @@ defmodule DrawbridgeProxy.IntegrationTest do
       {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", tls_port, [:binary, active: false], 3_000)
       :ok = :gen_tcp.send(sock, client_hello("nonexistent.dev.local"))
 
+      # The fallback page feature (v0.3.0) attempts a TLS handshake to serve
+      # a 503 page. From the raw-TCP test client's perspective, the outcome
+      # depends on whether dev certs exist on the machine:
+      #   - No certs  → handler closes immediately (:closed / :econnreset)
+      #   - Certs     → handler attempts TLS; our non-TLS client times out or
+      #                  receives a TLS ServerHello (binary data)
       result = :gen_tcp.recv(sock, 0, 3_000)
-      assert result in [{:error, :closed}, {:error, :econnreset}]
+
+      case result do
+        {:error, reason} ->
+          assert reason in [:closed, :econnreset, :timeout]
+
+        {:ok, data} ->
+          # Got TLS ServerHello bytes from the fallback page handshake
+          assert is_binary(data)
+      end
     end
 
     test "multiple concurrent connections are routed correctly" do

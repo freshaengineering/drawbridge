@@ -81,31 +81,6 @@ defmodule DrawbridgeTui.DashboardTest do
     end
 
     test "renders services with correct columns" do
-      services = [
-        %{
-          name: :postgres,
-          state: :running,
-          hostname: "postgres.dev.local",
-          image: "postgres:16",
-          ports: [{5432, 5432}],
-          connections: 2,
-          uptime: 150
-        },
-        %{
-          name: :redis,
-          state: :stopped,
-          hostname: "redis.dev.local",
-          image: "redis:7",
-          ports: [{6379, 6379}],
-          connections: 0,
-          uptime: nil
-        }
-      ]
-
-      output =
-        Dashboard.render(services, "dev.local")
-        |> Owl.Data.to_chardata()
-        |> IO.chardata_to_string()
       services = Enum.take(@sample_services, 2)
       output = to_string_output(Dashboard.render(services, "dev.local"))
 
@@ -237,7 +212,7 @@ defmodule DrawbridgeTui.DashboardTest do
       }
 
       output =
-        Dashboard.render(services, "dev.local", pull_progress)
+        Dashboard.render(services, "dev.local", -1, pull_progress)
         |> Owl.Data.to_chardata()
         |> IO.chardata_to_string()
 
@@ -271,7 +246,7 @@ defmodule DrawbridgeTui.DashboardTest do
       }
 
       output =
-        Dashboard.render(services, "dev.local", pull_progress)
+        Dashboard.render(services, "dev.local", -1, pull_progress)
         |> Owl.Data.to_chardata()
         |> IO.chardata_to_string()
 

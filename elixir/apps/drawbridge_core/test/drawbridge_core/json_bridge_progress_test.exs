@@ -26,9 +26,25 @@ defmodule DrawbridgeCore.JsonBridgeProgressTest do
         name: name
       )
 
-    # Wait for ready signal
-    Process.sleep(500)
+    # Wait for the bridge to become ready (mock agent sends "[CommandServer] Ready" on boot)
+    wait_until_ready(name, 20, 100)
     {pid, name}
+  end
+
+  defp wait_until_ready(_name, 0, _interval), do: :ok
+
+  defp wait_until_ready(name, retries, interval) do
+    case GenServer.call(name, {:call_agent, :health, 2_000}, 3_000) do
+      {:ok, _} ->
+        :ok
+
+      {:error, :not_ready} ->
+        Process.sleep(interval)
+        wait_until_ready(name, retries - 1, interval)
+
+      {:error, _} ->
+        :ok
+    end
   end
 
   test "progress events are broadcast to subscribers" do
