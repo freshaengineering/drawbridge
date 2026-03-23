@@ -38,14 +38,46 @@ enum ContainerResult: Sendable {
     case error(String)
 }
 
-// MARK: - Wire types for `container ls --format json` / inspect output
+// MARK: - Wire types for Apple Container CLI JSON output
 
+/// `container inspect` output format
+struct ContainerInspectEntry: Decodable, Sendable {
+    let status: String?
+    let startedDate: Double?
+    let networks: [InspectNetwork]?
+    let configuration: InspectConfig?
+
+    struct InspectNetwork: Decodable, Sendable {
+        let network: String?
+        let ipAddress: String?
+        let ip: String?
+
+        var effectiveIP: String? { ipAddress ?? ip }
+    }
+
+    struct InspectConfig: Decodable, Sendable {
+        let id: String?
+        let image: InspectImage?
+
+        struct InspectImage: Decodable, Sendable {
+            let reference: String?
+        }
+    }
+
+    var effectiveIP: String? {
+        networks?.first(where: { $0.effectiveIP != nil })?.effectiveIP
+    }
+
+    var effectiveName: String? { configuration?.id }
+    var effectiveImage: String? { configuration?.image?.reference }
+}
+
+/// `container ls --format json` output format
 struct ContainerListEntry: Decodable, Sendable {
     let id: String?
     let name: String?
     let image: String?
     let status: String?
-    // Apple Container may use "IP" or "ipAddress"; try both
     let ip: String?
     let ipAddress: String?
 
