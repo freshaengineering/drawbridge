@@ -35,13 +35,12 @@ defmodule DrawbridgeCore.Orchestrator do
     |> Enum.to_list()
   end
 
-  @doc "Return host ports that need a gRPC-aware listener (multiple gRPC services sharing a port)."
+  @doc "Return host ports that need a gRPC-aware listener."
   def grpc_listener_ports(%DrawbridgeCore.Config{} = config) do
     config.services
     |> Map.values()
     |> Enum.filter(&(&1.protocol == :grpc))
     |> Enum.group_by(fn svc -> svc.ports |> hd() |> elem(0) end)
-    |> Enum.filter(fn {_port, svcs} -> length(svcs) > 1 end)
     |> Enum.to_list()
   end
 
