@@ -8,25 +8,24 @@ defmodule DrawbridgeCli do
   end
 
   def main(args) do
-    {_opts, command, _} =
-      OptionParser.parse(args,
-        switches: [config: :string, all: :boolean, no_dns: :boolean, keep_dns: :boolean],
-        aliases: [c: :config]
-      )
+    # Only split on the first positional arg (the subcommand).
+    # Pass everything after it through untouched so subcommand
+    # parsers handle their own flags (--local, --tui, etc.)
+    {command, rest} = split_subcommand(args)
 
     case command do
-      ["setup" | rest] -> Mix.Tasks.Drawbridge.Setup.run(rest)
-      ["up" | rest] -> Mix.Tasks.Drawbridge.Up.run(rest)
-      ["down" | rest] -> Mix.Tasks.Drawbridge.Down.run(rest)
-      ["status" | _] -> Mix.Tasks.Drawbridge.Status.run([])
-      ["pull" | rest] -> Mix.Tasks.Drawbridge.Pull.run(rest)
-      ["lock" | rest] -> Mix.Tasks.Drawbridge.Lock.run(rest)
-      ["init" | _] -> Mix.Tasks.Drawbridge.Init.run([])
-      ["api" | rest] -> Mix.Tasks.Drawbridge.Api.run(rest)
-      ["mcp" | rest] -> Mix.Tasks.Drawbridge.Mcp.run(rest)
-      ["tui" | rest] -> Mix.Tasks.Drawbridge.Tui.run(rest)
-      ["auth" | rest] -> Mix.Tasks.Drawbridge.Auth.run(rest)
-      ["version" | _] -> IO.puts("drawbridge #{version()}")
+      "setup" -> Mix.Tasks.Drawbridge.Setup.run(rest)
+      "up" -> Mix.Tasks.Drawbridge.Up.run(rest)
+      "down" -> Mix.Tasks.Drawbridge.Down.run(rest)
+      "status" -> Mix.Tasks.Drawbridge.Status.run(rest)
+      "pull" -> Mix.Tasks.Drawbridge.Pull.run(rest)
+      "lock" -> Mix.Tasks.Drawbridge.Lock.run(rest)
+      "init" -> Mix.Tasks.Drawbridge.Init.run(rest)
+      "api" -> Mix.Tasks.Drawbridge.Api.run(rest)
+      "mcp" -> Mix.Tasks.Drawbridge.Mcp.run(rest)
+      "tui" -> Mix.Tasks.Drawbridge.Tui.run(rest)
+      "auth" -> Mix.Tasks.Drawbridge.Auth.run(rest)
+      "version" -> IO.puts("drawbridge #{version()}")
       _ -> usage()
     end
   end
@@ -50,6 +49,13 @@ defmodule DrawbridgeCli do
       true ->
         IO.puts(:stderr, "error: No drawbridge.yml found. Run \`drawbridge init\` to create one.")
         System.halt(1)
+    end
+  end
+
+  defp split_subcommand(args) do
+    case Enum.split_while(args, &String.starts_with?(&1, "-")) do
+      {_flags, [cmd | rest]} -> {cmd, rest}
+      {_, []} -> {nil, []}
     end
   end
 
