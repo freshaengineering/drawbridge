@@ -21,7 +21,7 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | Swift-Erlang interop | **Partial** | Container agent joins BEAM cluster via swift-erlang-actor-system |
 | L7 protocol inspection | Planned | HTTP/gRPC/Kafka/Postgres wire protocol decoding |
 | OpenTelemetry / Datadog | Planned | Local distributed tracing and log aggregation |
-| TUI | Planned | Terminal UI for service topology and traffic flow |
+| TUI | **Done** | Terminal UI for service topology and traffic flow |
 
 ## How it works
 
@@ -327,6 +327,7 @@ drawbridge/
 │   └── apps/
 │       ├── drawbridge_proxy/   # Ranch-based L4 proxy (SNI + port routing)
 │       ├── drawbridge_core/    # Config, state machine, Swift bridge, certs, DNS
+│       ├── drawbridge_tui/     # Owl-based terminal dashboard
 │       └── drawbridge_cli/     # Mix tasks (up, down, status, pull, init)
 ├── swift/
 │   └── Sources/DrawbridgeAgent/  # Apple Container lifecycle manager
@@ -352,7 +353,7 @@ Known risks:
 - [ ] End-to-end integration test on macOS 26
 - [ ] L7 protocol-aware proxy (HTTP/gRPC/Kafka/Postgres wire protocol inspection)
 - [ ] OpenTelemetry + Datadog local collector for distributed tracing
-- [ ] TUI for service topology, traffic flow, and log tailing
+- [x] TUI for service topology, traffic flow, and log tailing
 - [ ] `drawbridge.lock` for reproducible image version pinning
 - [ ] AI agent API — expose proxy state and wire protocol data to coding agents
 
