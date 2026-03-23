@@ -49,6 +49,14 @@ defmodule DrawbridgeCore.ServiceManager do
     end
   end
 
+  @doc "Acknowledge a data packet relay, resetting the idle timer without touching connection counts."
+  def ack(service_name) do
+    case lookup(service_name) do
+      {:ok, pid} -> GenServer.cast(pid, :ack)
+      :error -> :ok
+    end
+  end
+
   @doc "Get current state info for a service."
   def get_state(service_name) do
     case lookup(service_name) do
@@ -175,6 +183,12 @@ defmodule DrawbridgeCore.ServiceManager do
 
     {:reply, :ok, %{s | state: :stopped, ip: nil, started_at: nil, active_connections: 0}}
   end
+
+  def handle_cast(:ack, %{state: :running} = s) do
+    {:noreply, reset_idle_timer(s)}
+  end
+
+  def handle_cast(:ack, s), do: {:noreply, s}
 
   @impl true
   def handle_cast(:release_connection, s) do

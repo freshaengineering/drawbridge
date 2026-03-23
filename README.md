@@ -295,6 +295,15 @@ $ task status
   ...
 ```
 
+## Example configs
+
+See `config/examples/` for configs tailored to common stacks:
+
+- [`minimal.drawbridge.yml`](config/examples/minimal.drawbridge.yml) — single service + Postgres
+- [`node-fullstack.drawbridge.yml`](config/examples/node-fullstack.drawbridge.yml) — Node.js API + Postgres + Redis
+- [`elixir-phoenix.drawbridge.yml`](config/examples/elixir-phoenix.drawbridge.yml) — Phoenix + Postgres + Redis + Elasticsearch
+- [`microservices.drawbridge.yml`](config/examples/microservices.drawbridge.yml) — gRPC services with dependency chains
+
 ## Configuration reference
 
 ### Service options
