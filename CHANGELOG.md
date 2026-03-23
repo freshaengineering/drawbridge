@@ -5,6 +5,16 @@ All notable changes to Drawbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- L7 protocol-aware proxy: detect HTTP/1.1, Postgres, Redis, and Kafka wire protocols on first client chunk
+- Protocol behaviour (`DrawbridgeProxy.Protocol`) with `detect/1` callback for pluggable parsers
+- ETS-backed `ProtocolRegistry` for storing per-connection protocol metadata (keyed by service + connection ref)
+- Optional `protocol` hint field on `Config.Service` for explicit protocol declaration
+- SniHandler records `:tls` protocol with SNI hostname; PortHandler runs full protocol detection on raw TCP
+
 ## [0.1.0] - 2026-03-16
 
 ### Added
