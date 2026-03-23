@@ -52,20 +52,23 @@ actor ContainerManager {
         }
 
         // Pull first (with progress streaming) so `container run` doesn't block on pull
+        print("[ContainerManager] \(name): step 1/3 — checking if image needs pull")
         if let onProgress = onPullProgress {
-            print("[ContainerManager] \(name): pulling \(image)")
+            print("[ContainerManager] \(name): step 1/3 — pulling \(image) (with progress)")
             try await runtime.pullStreaming(image: image, onLine: onProgress)
-            print("[ContainerManager] \(name): pull complete")
         } else {
-            print("[ContainerManager] \(name): pulling \(image)")
+            print("[ContainerManager] \(name): step 1/3 — pulling \(image)")
             try await runtime.pull(image: image)
-            print("[ContainerManager] \(name): pull complete")
         }
+        print("[ContainerManager] \(name): step 1/3 — pull complete")
 
-        print("[ContainerManager] \(name): starting container")
+        print("[ContainerManager] \(name): step 2/3 — starting container (ports: \(mappings.map { "\($0.hostPort):\($0.containerPort)" }))")
         var info = try await runtime.run(name: name, image: image, ports: mappings, env: env)
+        print("[ContainerManager] \(name): step 2/3 — container started, state=\(info.state.rawValue)")
+
         info.state = .booting
         containers[name] = info
+        print("[ContainerManager] \(name): step 3/3 — registered, returning to bridge")
         return info
     }
 
