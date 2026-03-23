@@ -1,59 +1,151 @@
 defmodule DrawbridgeCore.ImageResolver do
   @moduledoc """
-  Resolves OCI image tags to SHA256 digests via the `container` CLI.
+  Resolves container image references to pullable tags.
+
+  ECR repos don't have `latest` tags — images are tagged `git-<sha>`.
+  When a service config omits the tag (no `:` in the image ref), this
+  module queries ECR for the most recently pushed tag.
+
+  Images with an explicit tag are passed through unchanged.
   """
+
+  require Logger
 
   @doc """
-  Resolve a single image reference to its digest.
-
-  Returns `{:ok, "sha256:..."}` or `{:error, reason}`.
-  Pass `cmd_runner: fn(cmd, args) -> {output, exit_code} end` to stub for tests.
+  Resolve an image reference. If it's an ECR image without a tag,
+  query for the most recently pushed tag. Otherwise return as-is.
   """
-  def resolve(image_ref, opts \\ []) do
-    runner = Keyword.get(opts, :cmd_runner, &default_cmd/2)
+  def resolve(image) do
+    {registry, repo, tag} = parse_image(image)
 
-    case runner.("container", ["image", "inspect", image_ref, "--format", "json"]) do
-      {output, 0} ->
-        extract_digest(output)
+    if ecr_registry?(registry) and is_nil(tag) do
+      case resolve_ecr_latest(registry, repo) do
+        {:ok, resolved_tag} ->
+          resolved = "#{registry}/#{repo}:#{resolved_tag}"
+          Logger.info("[ImageResolver] #{image} → #{resolved}")
+          resolved
 
-      {output, code} ->
-        {:error, "container inspect exited #{code}: #{String.trim(output)}"}
+        {:error, reason} ->
+          Logger.error("[ImageResolver] Failed to resolve #{image}: #{reason}")
+          image
+      end
+    else
+      image
     end
   end
 
-  @doc """
-  Pull an image and then resolve its digest.
-  """
-  def pull_and_resolve(image_ref, opts \\ []) do
-    runner = Keyword.get(opts, :cmd_runner, &default_cmd/2)
+  @doc "Resolve all service images in a config, returning updated config."
+  def resolve_config(%DrawbridgeCore.Config{} = config) do
+    ecr_repos =
+      config.services
+      |> Enum.filter(fn {_, svc} ->
+        {registry, _, tag} = parse_image(svc.image)
+        ecr_registry?(registry) and is_nil(tag)
+      end)
 
-    case runner.("container", ["image", "pull", image_ref]) do
-      {_, 0} -> resolve(image_ref, opts)
+    if ecr_repos != [] do
+      names = Enum.map_join(ecr_repos, ", ", fn {name, _} -> name end)
+      Logger.info("[ImageResolver] Resolving latest ECR tags for: #{names}")
+    end
+
+    updated_services =
+      Map.new(config.services, fn {name, svc} ->
+        resolved_image = resolve(svc.image)
+        {name, %{svc | image: resolved_image}}
+      end)
+
+    %{config | services: updated_services}
+  end
+
+  # -- Digest resolution (used by lock command) --
+
+  @doc "Resolve an image to its SHA256 digest via `container image inspect`."
+  def resolve_digest(image_ref) do
+    case System.cmd("container", ["image", "inspect", image_ref, "--format", "json"],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} -> extract_digest(output)
+      {output, code} -> {:error, "container inspect exited #{code}: #{String.trim(output)}"}
+    end
+  end
+
+  @doc "Pull an image and then resolve its digest."
+  def pull_and_resolve(image_ref) do
+    case System.cmd("container", ["image", "pull", image_ref], stderr_to_stdout: true) do
+      {_, 0} -> resolve_digest(image_ref)
       {output, code} -> {:error, "container pull exited #{code}: #{String.trim(output)}"}
     end
   end
 
   defp extract_digest(json_output) do
     case Jason.decode(json_output) do
-      {:ok, [first | _]} -> extract_from_map(first)
-      {:ok, %{} = map} -> extract_from_map(map)
+      {:ok, [%{"Digest" => digest} | _]} when is_binary(digest) -> {:ok, digest}
+      {:ok, %{"Digest" => digest}} when is_binary(digest) -> {:ok, digest}
+      {:ok, _} -> {:error, "no digest in inspect output"}
       {:error, reason} -> {:error, "failed to parse inspect JSON: #{inspect(reason)}"}
     end
   end
 
-  defp extract_from_map(%{"Digest" => digest}) when is_binary(digest), do: {:ok, digest}
+  # -- Private --
 
-  defp extract_from_map(%{"RepoDigests" => [digest_ref | _]}) do
-    case String.split(digest_ref, "@") do
-      [_, digest] -> {:ok, digest}
-      _ -> {:error, "unexpected RepoDigests format: #{digest_ref}"}
+  defp parse_image(image) do
+    # Split "registry/repo:tag" or "registry/repo" (no tag)
+    {ref, tag} =
+      case String.split(image, ":", parts: 2) do
+        [ref, tag] -> {ref, tag}
+        [ref] -> {ref, nil}
+      end
+
+    case String.split(ref, "/", parts: 2) do
+      [registry, repo] when byte_size(registry) > 0 ->
+        if String.contains?(registry, ".") do
+          {registry, repo, tag}
+        else
+          {"", ref, tag}
+        end
+
+      _ ->
+        {"", ref, tag}
     end
   end
 
-  defp extract_from_map(other),
-    do: {:error, "no digest found in inspect output: #{inspect(other)}"}
+  defp ecr_registry?(registry), do: String.contains?(registry, "dkr.ecr")
 
-  defp default_cmd(cmd, args) do
-    System.cmd(cmd, args, stderr_to_stdout: true)
+  defp resolve_ecr_latest(registry, repo) do
+    region = extract_ecr_region(registry)
+
+    case System.cmd(
+           "aws",
+           [
+             "ecr",
+             "describe-images",
+             "--repository-name",
+             repo,
+             "--region",
+             region,
+             "--query",
+             "imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]",
+             "--output",
+             "text"
+           ],
+           stderr_to_stdout: true
+         ) do
+      {tag, 0} ->
+        tag = String.trim(tag)
+
+        if tag == "" or tag == "None" do
+          {:error, "no tags found for #{repo}"}
+        else
+          {:ok, tag}
+        end
+
+      {output, code} ->
+        {:error, "aws ecr failed (exit #{code}): #{String.slice(output, 0, 200)}"}
+    end
+  end
+
+  defp extract_ecr_region(registry) do
+    # 514443763038.dkr.ecr.us-east-1.amazonaws.com → us-east-1
+    registry |> String.split(".") |> Enum.at(3, "us-east-1")
   end
 end
