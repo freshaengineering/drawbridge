@@ -26,6 +26,7 @@ defmodule DrawbridgeTui.Dashboard do
   def pull_progress(data) do
     GenServer.cast(@name, {:pull_progress, data})
   end
+
   @doc "Move selection to next service."
   def select_next, do: GenServer.cast(@name, :select_next)
 
@@ -45,12 +46,11 @@ defmodule DrawbridgeTui.Dashboard do
   @impl true
   def init(opts) do
     domain = Keyword.get(opts, :domain, "dev.local")
-    Owl.LiveScreen.add_block(:dashboard, state: render([], domain, %{}))
-    {:ok, %{domain: domain, pull_progress: %{}}}
 
     state = %{
       domain: domain,
       services: [],
+      pull_progress: %{},
       selected_index: 0,
       flash: nil,
       flash_timer: nil,
@@ -71,11 +71,10 @@ defmodule DrawbridgeTui.Dashboard do
       |> Enum.reject(&is_nil/1)
       |> MapSet.new()
 
-    pull_progress = Map.filter(state.pull_progress, fn {image, _} -> image in booting_images end)
-    state = %{state | pull_progress: pull_progress}
+    pull_progress =
+      Map.filter(state.pull_progress, fn {image, _} -> image in booting_images end)
 
-    Owl.LiveScreen.update(:dashboard, render(services, state.domain, state.pull_progress))
-    state = %{state | services: services}
+    state = %{state | services: services, pull_progress: pull_progress}
     # Clamp selection if services list shrunk
     state = clamp_selection(state)
     Owl.LiveScreen.update(:dashboard, render_all(state))
@@ -88,6 +87,7 @@ defmodule DrawbridgeTui.Dashboard do
     pull_progress = Map.put(state.pull_progress, image, progress)
     {:noreply, %{state | pull_progress: pull_progress}}
   end
+
   def handle_cast(:select_next, state) do
     count = length(state.services)
 
@@ -152,7 +152,7 @@ defmodule DrawbridgeTui.Dashboard do
   # -- Rendering --
 
   defp render_all(state) do
-    parts = render(state.services, state.domain, state.selected_index)
+    parts = render(state.services, state.domain, state.selected_index, state.pull_progress)
 
     parts =
       if state.services != [] do
@@ -179,8 +179,7 @@ defmodule DrawbridgeTui.Dashboard do
   end
 
   @doc false
-  def render(services, domain, pull_progress \\ %{}) do
-  def render(services, domain, selected_index \\ -1) do
+  def render(services, domain, selected_index \\ -1, pull_progress \\ %{}) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%H:%M:%S UTC")
 
     header =
@@ -203,11 +202,12 @@ defmodule DrawbridgeTui.Dashboard do
       ]
       |> Owl.Data.tag(:faint)
 
-    rows = Enum.map(services, &render_row(&1, pull_progress))
     rows =
       services
       |> Enum.with_index()
-      |> Enum.map(fn {svc, idx} -> render_row(svc, idx == selected_index) end)
+      |> Enum.map(fn {svc, idx} ->
+        render_row(svc, idx == selected_index, pull_progress)
+      end)
 
     footer =
       Owl.Data.tag(
@@ -226,18 +226,16 @@ defmodule DrawbridgeTui.Dashboard do
     |> Kernel.++(["─\n", footer])
   end
 
-  defp render_row(svc, pull_progress) do
-  defp render_row(svc, selected?) do
+  defp render_row(svc, selected?, pull_progress) do
     state_tag = state_color(svc.state)
 
     ports =
       svc.ports
       |> Enum.map_join(", ", fn {h, c} -> "#{h}:#{c}" end)
 
-    base = [
     marker = if selected?, do: Owl.Data.tag("> ", :bright), else: "  "
 
-    [
+    base = [
       marker,
       pad(to_string(svc.name), 18),
       pad_tagged(state_tag, 12),
@@ -295,6 +293,7 @@ defmodule DrawbridgeTui.Dashboard do
   end
 
   defp parse_percent(_), do: 0
+
   defp render_deps(services) do
     deps =
       services
