@@ -47,18 +47,19 @@ defmodule DrawbridgeProxy.PortHandler do
       msg_error: msg_error
     }
 
-    :gen_statem.enter_loop(__MODULE__, [], :connecting, data)
+    actions = [{:state_timeout, 0, :do_connect}]
+    :gen_statem.enter_loop(__MODULE__, [], :connecting, data, actions)
   end
 
   @impl :gen_statem
   def callback_mode, do: :state_functions
 
-  # ---- connecting — initial state, runs immediately on enter ----
+  # ---- connecting — initial state ----
 
-  def connecting(:enter, _old_state, %{service_name: svc} = data) do
+  def connecting(:state_timeout, :do_connect, %{service_name: svc} = data) do
     case DrawbridgeCore.ServiceManager.request_connection(svc) do
       {:ok, {ip, port}} ->
-        {:keep_state, data, [{:next_event, :internal, {:connect, ip, port}}]}
+        do_connect_backend(ip, port, data)
 
       {:wait, ref} ->
         Logger.debug("[PortHandler] waiting for container boot: #{svc}")
@@ -70,10 +71,6 @@ defmodule DrawbridgeProxy.PortHandler do
         Logger.debug("[PortHandler] unknown service #{svc}: #{inspect(reason)}")
         {:stop, :normal}
     end
-  end
-
-  def connecting(:internal, {:connect, ip, port}, data) do
-    do_connect_backend(ip, port, data)
   end
 
   def connecting(:info, {msg_closed, socket}, %{msg_closed: msg_closed, socket: socket}) do
