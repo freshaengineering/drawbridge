@@ -42,7 +42,7 @@ defmodule DrawbridgeCore.HostNetwork do
   def resolve_env_for_container(env, domain) do
     gateway = host_gateway_ip()
     escaped = Regex.escape(domain)
-    pattern = Regex.compile!("[a-zA-Z0-9_-]+\\.#{escaped}")
+    pattern = Regex.compile!("[a-zA-Z0-9._-]+\\.#{escaped}")
 
     Map.new(env, fn {key, value} ->
       {key, Regex.replace(pattern, value, gateway)}
