@@ -112,6 +112,9 @@ actor CommandServer {
 
     // MARK: - Image inspect
 
+    // TODO: waitUntilExit() blocks this actor method synchronously, preventing
+    // all other command processing while the inspect runs. Should be refactored
+    // to use async process handling (e.g. terminationHandler or structured concurrency).
     private func inspectImage(image: String) async throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

@@ -34,7 +34,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
   test "health check round-trips" do
     {pid, name} = start_bridge()
 
-    result = GenServer.call(name, {:call_agent, :health}, 5_000)
+    result = GenServer.call(name, {:call_agent, :health, 5_000}, 5_000)
     assert {:ok, "pong"} = result
 
     GenServer.stop(pid)
@@ -46,7 +46,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
     tasks =
       for i <- 1..5 do
         Task.async(fn ->
-          GenServer.call(name, {:call_agent, {:status, "svc-#{i}"}}, 5_000)
+          GenServer.call(name, {:call_agent, {:status, "svc-#{i}"}, 5_000}, 5_000)
         end)
       end
 
@@ -60,7 +60,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
   test "list command" do
     {pid, name} = start_bridge()
 
-    result = GenServer.call(name, {:call_agent, :list}, 5_000)
+    result = GenServer.call(name, {:call_agent, :list, 5_000}, 5_000)
     assert {:ok, []} = result
 
     GenServer.stop(pid)
@@ -69,7 +69,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
   test "error responses include code" do
     {pid, name} = start_bridge()
 
-    result = GenServer.call(name, {:call_agent, {:raw_cmd, "bogus_cmd"}}, 5_000)
+    result = GenServer.call(name, {:call_agent, {:raw_cmd, "bogus_cmd"}, 5_000}, 5_000)
     assert {:error, {"unknown_command", "unknown cmd 'bogus_cmd'"}} = result
 
     GenServer.stop(pid)
@@ -81,7 +81,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
     {:ok, pid} =
       GenServer.start_link(JsonBridge, [swift_binary: nil], name: name)
 
-    result = GenServer.call(name, {:call_agent, :health}, 1_000)
+    result = GenServer.call(name, {:call_agent, :health, 1_000}, 1_000)
     assert {:error, :not_connected} = result
 
     GenServer.stop(pid)
@@ -93,7 +93,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
     # Send a "crash" command that makes the mock script exit
     task =
       Task.async(fn ->
-        GenServer.call(name, {:call_agent, {:pull, "__crash__"}}, 5_000)
+        GenServer.call(name, {:call_agent, {:pull, "__crash__"}, 5_000}, 5_000)
       end)
 
     result = Task.await(task, 5_000)
@@ -103,7 +103,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
     Process.sleep(3_000)
 
     # Should be working again after reconnect
-    result = GenServer.call(name, {:call_agent, :health}, 5_000)
+    result = GenServer.call(name, {:call_agent, :health, 5_000}, 5_000)
     assert {:ok, "pong"} = result
 
     GenServer.stop(pid)

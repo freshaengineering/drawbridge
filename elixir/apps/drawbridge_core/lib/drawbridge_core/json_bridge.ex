@@ -20,7 +20,7 @@ defmodule DrawbridgeCore.JsonBridge do
     ready: false,
     next_id: 1,
     pending: %{},
-    buffer: ""
+    line_buffer: ""
   ]
 
   # -- Public API --
@@ -31,13 +31,15 @@ defmodule DrawbridgeCore.JsonBridge do
 
   @impl DrawbridgeCore.SwiftBridge
   def call_agent(command, timeout \\ 30_000) do
-    GenServer.call(__MODULE__, {:call_agent, command}, timeout)
+    GenServer.call(__MODULE__, {:call_agent, command, timeout}, timeout)
   end
 
   # -- GenServer callbacks --
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
+
     binary = opts[:swift_binary] || find_swift_binary()
     args = opts[:swift_args] || []
 
@@ -55,20 +57,20 @@ defmodule DrawbridgeCore.JsonBridge do
   end
 
   @impl true
-  def handle_call({:call_agent, _command}, _from, %{port: nil} = state) do
+  def handle_call({:call_agent, _command, _timeout}, _from, %{port: nil} = state) do
     {:reply, {:error, :not_connected}, state}
   end
 
-  def handle_call({:call_agent, _command}, _from, %{ready: false} = state) do
+  def handle_call({:call_agent, _command, _timeout}, _from, %{ready: false} = state) do
     {:reply, {:error, :not_ready}, state}
   end
 
-  def handle_call({:call_agent, command}, from, state) do
+  def handle_call({:call_agent, command, timeout}, from, state) do
     id = state.next_id
     id_str = Integer.to_string(id)
 
     json = encode_command(id_str, command)
-    timer = Process.send_after(self(), {:timeout, id_str}, 30_000)
+    timer = Process.send_after(self(), {:timeout, id_str}, timeout)
 
     pending = Map.put(state.pending, id_str, {from, timer})
     state = %{state | next_id: id + 1, pending: pending}
@@ -78,20 +80,28 @@ defmodule DrawbridgeCore.JsonBridge do
   end
 
   @impl true
-  def handle_info({port, {:data, data}}, %{port: port} = state) when is_port(port) do
-    buffer = state.buffer <> data
-    {lines, rest} = split_lines(buffer)
-    state = %{state | buffer: rest}
+  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) when is_port(port) do
+    full_line = state.line_buffer <> line
+    state = %{state | line_buffer: ""}
+    {:noreply, process_line(full_line, state)}
+  end
 
-    state = Enum.reduce(lines, state, &process_line/2)
-    {:noreply, state}
+  def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) when is_port(port) do
+    {:noreply, %{state | line_buffer: state.line_buffer <> chunk}}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) when is_port(port) do
     Logger.error("[JsonBridge] Swift process exited with status #{status}")
     state = fail_all_pending(state, {:error, :port_crashed})
     Process.send_after(self(), :reconnect, @reconnect_interval)
-    {:noreply, %{state | port: nil, ready: false, buffer: ""}}
+    {:noreply, %{state | port: nil, ready: false, line_buffer: ""}}
+  end
+
+  def handle_info({:EXIT, port, reason}, %{port: port} = state) when is_port(port) do
+    Logger.error("[JsonBridge] Port died with reason: #{inspect(reason)}")
+    state = fail_all_pending(state, {:error, :port_crashed})
+    Process.send_after(self(), :reconnect, @reconnect_interval)
+    {:noreply, %{state | port: nil, ready: false, line_buffer: ""}}
   end
 
   def handle_info(:reconnect, state) do
@@ -139,20 +149,14 @@ defmodule DrawbridgeCore.JsonBridge do
         port =
           Port.open({:spawn_executable, binary_path}, [
             :binary,
+            {:line, 65_536},
             :exit_status,
             :use_stdio,
             {:args, state.swift_args}
           ])
 
         Logger.info("[JsonBridge] Launched Swift agent: #{binary_path}")
-        %{state | port: port, ready: false, buffer: ""}
-    end
-  end
-
-  defp split_lines(buffer) do
-    case String.split(buffer, "\n") do
-      [only] -> {[], only}
-      parts -> {Enum.slice(parts, 0..-2//1), List.last(parts)}
+        %{state | port: port, ready: false, line_buffer: ""}
     end
   end
 
@@ -252,12 +256,23 @@ defmodule DrawbridgeCore.JsonBridge do
   end
 
   defp find_swift_binary do
-    paths = [
-      Path.expand("../../swift/.build/release/DrawbridgeAgent"),
-      Path.expand("../../swift/.build/debug/DrawbridgeAgent"),
-      System.find_executable("drawbridge-agent")
-    ]
+    configured = Application.get_env(:drawbridge_core, :swift_binary_path)
 
-    Enum.find(paths, &(&1 && File.exists?(&1)))
+    paths =
+      [
+        configured,
+        app_dir_binary(),
+        System.find_executable("drawbridge-agent")
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    Enum.find(paths, &File.exists?/1)
+  end
+
+  defp app_dir_binary do
+    Application.app_dir(:drawbridge_core, "priv/swift/DrawbridgeAgent")
+  rescue
+    # app_dir raises if the app isn't loaded yet (e.g. during dev/test)
+    _ -> nil
   end
 end
