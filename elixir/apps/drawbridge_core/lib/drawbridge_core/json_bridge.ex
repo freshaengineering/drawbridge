@@ -240,7 +240,7 @@ defmodule DrawbridgeCore.JsonBridge do
         state
 
       {:error, _} ->
-        Logger.debug("[JsonBridge] Non-JSON from Swift: #{line}")
+        Logger.info("[SwiftAgent] #{line}")
         state
     end
   end
