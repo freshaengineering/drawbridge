@@ -9,7 +9,7 @@ defmodule DrawbridgeCore.SwiftBridge do
   In tests, use `DrawbridgeCore.StubSwiftBridge`.
   """
 
-  @callback call_agent(command :: term(), timeout :: non_neg_integer()) ::
+  @callback call_agent(command :: term(), timeout :: timeout()) ::
               {:ok, map() | term()} | {:error, term()}
 
   @doc "Dispatch to the configured SwiftBridge implementation."

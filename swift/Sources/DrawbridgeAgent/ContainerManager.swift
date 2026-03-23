@@ -43,12 +43,26 @@ actor ContainerManager {
         name: String,
         image: String,
         ports: [[String: Int]],
-        env: [String: String]
+        env: [String: String],
+        onPullProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> ContainerInfo {
         let mappings = ports.compactMap { d -> PortMapping? in
             guard let h = d["host"], let c = d["container"] else { return nil }
             return PortMapping(hostPort: h, containerPort: c)
         }
+
+        // Pull first (with progress streaming) so `container run` doesn't block on pull
+        if let onProgress = onPullProgress {
+            print("[ContainerManager] \(name): pulling \(image)")
+            try await runtime.pullStreaming(image: image, onLine: onProgress)
+            print("[ContainerManager] \(name): pull complete")
+        } else {
+            print("[ContainerManager] \(name): pulling \(image)")
+            try await runtime.pull(image: image)
+            print("[ContainerManager] \(name): pull complete")
+        }
+
+        print("[ContainerManager] \(name): starting container")
         var info = try await runtime.run(name: name, image: image, ports: mappings, env: env)
         info.state = .booting
         containers[name] = info
