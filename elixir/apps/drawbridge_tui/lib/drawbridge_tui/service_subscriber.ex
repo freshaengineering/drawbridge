@@ -1,7 +1,8 @@
 defmodule DrawbridgeTui.ServiceSubscriber do
   @moduledoc """
   GenServer that polls ServiceManager every second and pushes
-  state updates to the Dashboard process.
+  state updates to the Dashboard process. Also subscribes to
+  pull progress events from JsonBridge and forwards them.
   """
 
   use GenServer
@@ -15,6 +16,7 @@ defmodule DrawbridgeTui.ServiceSubscriber do
   @impl true
   def init(_) do
     schedule_poll()
+    subscribe_to_progress()
     {:ok, %{}}
   end
 
@@ -26,10 +28,23 @@ defmodule DrawbridgeTui.ServiceSubscriber do
     {:noreply, state}
   end
 
+  def handle_info({:pull_progress, data}, state) do
+    DrawbridgeTui.Dashboard.pull_progress(data)
+    {:noreply, state}
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   defp schedule_poll do
     Process.send_after(self(), :poll, @poll_interval)
+  end
+
+  defp subscribe_to_progress do
+    DrawbridgeCore.JsonBridge.subscribe_progress()
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 
   defp fetch_services do

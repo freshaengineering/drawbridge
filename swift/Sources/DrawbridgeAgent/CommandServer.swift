@@ -29,26 +29,37 @@ actor CommandServer {
         encoder.dateEncodingStrategy = .iso8601
     }
 
-    func run() async throws {
-        print("[CommandServer] Ready. Accepting JSON commands on stdin.")
-        // Flush stdout immediately so the Elixir port sees it
+    // TODO: NSLock inside a Swift actor is a code smell — actors already serialize
+    // access to mutable state. The lock exists because pullImageStreaming's onLine
+    // callback fires from Task.detached on an arbitrary thread, and we need to
+    // prevent interleaved stdout writes. Refactor to route progress writes through
+    // the actor's serial executor instead.
+    private let outputLock = NSLock()
+
+    private func writeLine(_ line: String) {
+        outputLock.lock()
+        print(line)
         fflush(stdout)
+        outputLock.unlock()
+    }
+
+    func run() async throws {
+        writeLine("[CommandServer] Ready. Accepting JSON commands on stdin.")
 
         while let line = readLine(strippingNewline: true) {
             guard !line.isEmpty else { continue }
-            let response = await handle(line)
-            print(response)
-            fflush(stdout)
+            await handle(line)
         }
     }
 
     // MARK: - Dispatch
 
-    private func handle(_ line: String) async -> String {
+    private func handle(_ line: String) async {
         guard let data = line.data(using: .utf8),
               let cmd = try? decoder.decode(Command.self, from: data)
         else {
-            return errorResponse(id: nil, msg: "invalid JSON or missing 'cmd' field", code: "parse_error")
+            writeLine(errorResponse(id: nil, msg: "invalid JSON or missing 'cmd' field", code: "parse_error"))
+            return
         }
 
         let id = cmd.id
@@ -57,7 +68,8 @@ actor CommandServer {
             switch cmd.cmd {
             case "start":
                 guard let name = cmd.name, let image = cmd.image else {
-                    return errorResponse(id: id, msg: "start requires 'name' and 'image'", code: "invalid_args")
+                    writeLine(errorResponse(id: id, msg: "start requires 'name' and 'image'", code: "invalid_args"))
+                    return
                 }
                 let info = try await manager.startContainer(
                     name: name,
@@ -65,49 +77,97 @@ actor CommandServer {
                     ports: cmd.ports ?? [],
                     env: cmd.env ?? [:]
                 )
-                return try okResponse(id: id, data: info)
+                writeLine(try okResponse(id: id, data: info))
 
             case "stop":
                 guard let name = cmd.name else {
-                    return errorResponse(id: id, msg: "stop requires 'name'", code: "invalid_args")
+                    writeLine(errorResponse(id: id, msg: "stop requires 'name'", code: "invalid_args"))
+                    return
                 }
                 let ok = try await manager.stopContainer(name: name)
-                return try okResponse(id: id, data: ok)
+                writeLine(try okResponse(id: id, data: ok))
 
             case "status":
                 guard let name = cmd.name else {
-                    return errorResponse(id: id, msg: "status requires 'name'", code: "invalid_args")
+                    writeLine(errorResponse(id: id, msg: "status requires 'name'", code: "invalid_args"))
+                    return
                 }
                 let state = await manager.containerStatus(name: name)
-                return try okResponse(id: id, data: state.rawValue)
+                writeLine(try okResponse(id: id, data: state.rawValue))
 
             case "list":
                 let infos = await manager.listContainers()
-                return try okResponse(id: id, data: infos)
+                writeLine(try okResponse(id: id, data: infos))
 
             case "pull":
                 guard let image = cmd.image else {
-                    return errorResponse(id: id, msg: "pull requires 'image'", code: "invalid_args")
+                    writeLine(errorResponse(id: id, msg: "pull requires 'image'", code: "invalid_args"))
+                    return
                 }
-                let ok = try await manager.pullImage(image: image)
-                return try okResponse(id: id, data: ok)
+                try await manager.pullImageStreaming(image: image) { [weak self] progressLine in
+                    guard let self = self else { return }
+                    let progress = self.parsePullProgress(line: progressLine, image: image)
+                    let progressJson = self.progressResponse(id: id, data: progress)
+                    self.writeLine(progressJson)
+                }
+                writeLine(try okResponse(id: id, data: ["image": image]))
 
             case "health":
-                return try okResponse(id: id, data: "pong")
+                writeLine(try okResponse(id: id, data: "pong"))
 
             case "image_inspect":
                 guard let image = cmd.image else {
-                    return errorResponse(id: id, msg: "image_inspect requires 'image'", code: "invalid_args")
+                    writeLine(errorResponse(id: id, msg: "image_inspect requires 'image'", code: "invalid_args"))
+                    return
                 }
                 let result = try await inspectImage(image: image)
-                return try okResponse(id: id, data: result)
+                writeLine(try okResponse(id: id, data: result))
 
             default:
-                return errorResponse(id: id, msg: "unknown cmd '\(cmd.cmd)'", code: "unknown_command")
+                writeLine(errorResponse(id: id, msg: "unknown cmd '\(cmd.cmd)'", code: "unknown_command"))
             }
         } catch {
-            return errorResponse(id: id, msg: error.localizedDescription, code: "runtime_error")
+            writeLine(errorResponse(id: id, msg: error.localizedDescription, code: "runtime_error"))
         }
+    }
+
+    // MARK: - Pull progress parsing
+
+    /// Parse a pull progress line from the container CLI.
+    /// Attempts to extract percent/downloaded/total from typical progress output.
+    private nonisolated func parsePullProgress(line: String, image: String) -> [String: String] {
+        var result: [String: String] = ["image": image, "layer": line]
+
+        // Try to match patterns like "45%" or "(45%)" or "45.2%"
+        if let percentMatch = line.range(of: #"(\d+(?:\.\d+)?)\s*%"#, options: .regularExpression) {
+            let raw = line[percentMatch].replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
+            result["percent"] = raw
+        }
+
+        // Try to match byte patterns like "230MB/512MB" or "230 MB / 512 MB"
+        let bytePattern = #"(\d+(?:\.\d+)?\s*[KMGTkmgt][Bb]?)\s*/\s*(\d+(?:\.\d+)?\s*[KMGTkmgt][Bb]?)"#
+        if let byteMatch = line.range(of: bytePattern, options: .regularExpression) {
+            let matched = String(line[byteMatch])
+            let parts = matched.components(separatedBy: "/").map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count == 2 {
+                result["downloaded"] = parts[0]
+                result["total"] = parts[1]
+            }
+        }
+
+        return result
+    }
+
+    /// Build a progress JSON line (not a final response — "progress": true).
+    private nonisolated func progressResponse(id: String?, data: [String: String]) -> String {
+        var parts: [String] = []
+        if let id = id { parts.append("\"id\":\"\(id)\"") }
+        parts.append("\"progress\":true")
+        let dataEntries = data.sorted(by: { $0.key < $1.key }).map { k, v in
+            "\"\(k)\":\"\(v.replacingOccurrences(of: "\"", with: "\\\""))\""
+        }
+        parts.append("\"data\":{\(dataEntries.joined(separator: ","))}")
+        return "{\(parts.joined(separator: ","))}"
     }
 
     // MARK: - Image inspect

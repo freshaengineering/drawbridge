@@ -13,6 +13,56 @@ actor ContainerRuntime {
         }
     }
 
+    /// Pull an image while streaming progress lines to a callback.
+    /// The callback receives each stdout line as it arrives. Returns when the pull completes.
+    func pullStreaming(image: String, onLine: @Sendable @escaping (String) -> Void) async throws {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = ["container", "image", "pull", image]
+
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = errPipe
+
+        try proc.run()
+
+        // Read stdout line-by-line on a detached task
+        let fileHandle = outPipe.fileHandleForReading
+        let readTask = Task.detached {
+            var buffer = Data()
+            let newline = UInt8(ascii: "\n")
+            while true {
+                let chunk = fileHandle.availableData
+                if chunk.isEmpty { break }
+                buffer.append(chunk)
+                // Emit complete lines
+                while let idx = buffer.firstIndex(of: newline) {
+                    let lineData = buffer[buffer.startIndex..<idx]
+                    buffer = Data(buffer[(idx + 1)...])
+                    if let line = String(data: lineData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !line.isEmpty {
+                        onLine(line)
+                    }
+                }
+            }
+            // Emit any trailing content
+            if !buffer.isEmpty,
+               let line = String(data: buffer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !line.isEmpty {
+                onLine(line)
+            }
+        }
+
+        proc.waitUntilExit()
+        _ = await readTask.value
+
+        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard proc.terminationStatus == 0 else {
+            throw RuntimeError.commandFailed("pull \(image): \(stderr)")
+        }
+    }
+
     func run(
         name: String,
         image: String,

@@ -22,6 +22,10 @@ defmodule DrawbridgeTui.Dashboard do
     GenServer.cast(@name, {:update, services})
   end
 
+  @doc "Push pull progress data from the Swift agent."
+  def pull_progress(data) do
+    GenServer.cast(@name, {:pull_progress, data})
+  end
   @doc "Move selection to next service."
   def select_next, do: GenServer.cast(@name, :select_next)
 
@@ -41,6 +45,8 @@ defmodule DrawbridgeTui.Dashboard do
   @impl true
   def init(opts) do
     domain = Keyword.get(opts, :domain, "dev.local")
+    Owl.LiveScreen.add_block(:dashboard, state: render([], domain, %{}))
+    {:ok, %{domain: domain, pull_progress: %{}}}
 
     state = %{
       domain: domain,
@@ -57,6 +63,18 @@ defmodule DrawbridgeTui.Dashboard do
 
   @impl true
   def handle_cast({:update, services}, state) do
+    # Clear progress for images no longer in :booting state
+    booting_images =
+      services
+      |> Enum.filter(&(&1.state == :booting))
+      |> Enum.map(& &1[:image])
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
+
+    pull_progress = Map.filter(state.pull_progress, fn {image, _} -> image in booting_images end)
+    state = %{state | pull_progress: pull_progress}
+
+    Owl.LiveScreen.update(:dashboard, render(services, state.domain, state.pull_progress))
     state = %{state | services: services}
     # Clamp selection if services list shrunk
     state = clamp_selection(state)
@@ -64,6 +82,12 @@ defmodule DrawbridgeTui.Dashboard do
     {:noreply, state}
   end
 
+  def handle_cast({:pull_progress, data}, state) do
+    image = data["image"] || "unknown"
+    progress = Map.merge(state.pull_progress[image] || %{}, data)
+    pull_progress = Map.put(state.pull_progress, image, progress)
+    {:noreply, %{state | pull_progress: pull_progress}}
+  end
   def handle_cast(:select_next, state) do
     count = length(state.services)
 
@@ -155,6 +179,7 @@ defmodule DrawbridgeTui.Dashboard do
   end
 
   @doc false
+  def render(services, domain, pull_progress \\ %{}) do
   def render(services, domain, selected_index \\ -1) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%H:%M:%S UTC")
 
@@ -178,6 +203,7 @@ defmodule DrawbridgeTui.Dashboard do
       ]
       |> Owl.Data.tag(:faint)
 
+    rows = Enum.map(services, &render_row(&1, pull_progress))
     rows =
       services
       |> Enum.with_index()
@@ -200,6 +226,7 @@ defmodule DrawbridgeTui.Dashboard do
     |> Kernel.++(["─\n", footer])
   end
 
+  defp render_row(svc, pull_progress) do
   defp render_row(svc, selected?) do
     state_tag = state_color(svc.state)
 
@@ -207,6 +234,7 @@ defmodule DrawbridgeTui.Dashboard do
       svc.ports
       |> Enum.map_join(", ", fn {h, c} -> "#{h}:#{c}" end)
 
+    base = [
     marker = if selected?, do: Owl.Data.tag("> ", :bright), else: "  "
 
     [
@@ -218,8 +246,55 @@ defmodule DrawbridgeTui.Dashboard do
       pad(to_string(svc.connections), 8),
       format_uptime(svc.uptime)
     ]
+
+    image = Map.get(svc, :image)
+    progress = if image, do: Map.get(pull_progress, image), else: nil
+
+    if svc.state == :booting && progress do
+      [base, "\n", render_progress_bar(progress)]
+    else
+      base
+    end
   end
 
+  @doc false
+  def render_progress_bar(progress) do
+    percent = parse_percent(progress["percent"])
+    downloaded = progress["downloaded"] || "?"
+    total = progress["total"] || "?"
+
+    bar_width = 20
+    filled = round(bar_width * percent / 100)
+    empty = bar_width - filled
+
+    bar = [
+      Owl.Data.tag(String.duplicate("\u2588", filled), :cyan),
+      Owl.Data.tag(String.duplicate("\u2591", empty), :faint)
+    ]
+
+    percent_str = "#{round(percent)}%"
+
+    [
+      pad("", 18),
+      Owl.Data.tag("Pulling: ", :yellow),
+      bar,
+      " ",
+      percent_str,
+      " (#{downloaded}/#{total})"
+    ]
+  end
+
+  defp parse_percent(nil), do: 0
+  defp parse_percent(val) when is_number(val), do: val
+
+  defp parse_percent(val) when is_binary(val) do
+    case Float.parse(val) do
+      {f, _} -> f
+      :error -> 0
+    end
+  end
+
+  defp parse_percent(_), do: 0
   defp render_deps(services) do
     deps =
       services
