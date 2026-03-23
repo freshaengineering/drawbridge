@@ -9,6 +9,8 @@ defmodule DrawbridgeCore.Config.Service do
     :boot_timeout,
     :health_check,
     :depends_on,
+    :cpus,
+    :memory,
     image_digest: nil,
     env: %{},
     tls_backend: false,
@@ -41,6 +43,23 @@ defmodule DrawbridgeCore.Config do
     else
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc "Remove services by name. Returns a new config without those services."
+  def exclude_services(config, service_names) do
+    names = MapSet.new(service_names)
+    remaining = Map.reject(config.services, fn {name, _} -> MapSet.member?(names, name) end)
+    %{config | services: remaining}
+  end
+
+  @doc "Return hostnames for the given service names (for DNS registration of local services)."
+  def local_hostnames(config, service_names) do
+    names = MapSet.new(service_names)
+
+    config.services
+    |> Enum.filter(fn {name, _} -> MapSet.member?(names, name) end)
+    |> Enum.map(fn {_, svc} -> svc.hostname end)
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc "Load and parse a drawbridge.yml file, raising on error."
@@ -94,7 +113,9 @@ defmodule DrawbridgeCore.Config do
          tls_backend: raw["tls_backend"] || false,
          depends_on: raw["depends_on"] || [],
          protocol: parse_protocol_hint(raw["protocol"]),
-         database: raw["database"]
+         database: raw["database"],
+         cpus: raw["cpus"],
+         memory: raw["memory"]
        }}
     end
   end

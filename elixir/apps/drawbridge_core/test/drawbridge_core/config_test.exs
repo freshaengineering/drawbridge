@@ -251,4 +251,97 @@ defmodule DrawbridgeCore.ConfigTest do
     assert {:error, msg} = Config.load(path)
     assert msg =~ "database-routed and plain"
   end
+
+  describe "exclude_services/2" do
+    test "removes named services from config", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+      assert map_size(config.services) == 2
+
+      filtered = Config.exclude_services(config, ["redis"])
+      assert map_size(filtered.services) == 1
+      assert Map.has_key?(filtered.services, "postgres")
+      refute Map.has_key?(filtered.services, "redis")
+    end
+
+    test "removes multiple services", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+
+      filtered = Config.exclude_services(config, ["redis", "postgres"])
+      assert map_size(filtered.services) == 0
+    end
+
+    test "ignores unknown service names", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+
+      filtered = Config.exclude_services(config, ["nonexistent"])
+      assert map_size(filtered.services) == 2
+    end
+
+    test "preserves other config fields", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+
+      filtered = Config.exclude_services(config, ["redis"])
+      assert filtered.domain == config.domain
+      assert filtered.idle_timeout == config.idle_timeout
+      assert filtered.max_containers == config.max_containers
+    end
+  end
+
+  describe "local_hostnames/2" do
+    test "returns hostnames for named services", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+
+      hostnames = Config.local_hostnames(config, ["redis"])
+      assert hostnames == ["redis.dev.local"]
+    end
+
+    test "returns multiple hostnames", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+
+      hostnames = Config.local_hostnames(config, ["redis", "postgres"]) |> Enum.sort()
+      assert hostnames == ["postgres.dev.local", "redis.dev.local"]
+    end
+
+    test "ignores unknown names", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+
+      hostnames = Config.local_hostnames(config, ["nonexistent"])
+      assert hostnames == []
+    end
+  end
+
+  describe "cpus and memory fields" do
+    test "parses cpus and memory from config", %{path: path} do
+      yaml = """
+      domain: test.local
+      services:
+        es:
+          image: elasticsearch:9
+          hostname: es.test.local
+          ports:
+            - "9200:9200"
+          cpus: 4
+          memory: "14G"
+      """
+
+      write_yaml(path, yaml)
+      {:ok, config} = Config.load(path)
+      assert config.services["es"].cpus == 4
+      assert config.services["es"].memory == "14G"
+    end
+
+    test "cpus and memory default to nil", %{path: path} do
+      write_yaml(path, @valid_yaml)
+      {:ok, config} = Config.load(path)
+      assert config.services["postgres"].cpus == nil
+      assert config.services["postgres"].memory == nil
+    end
+  end
 end

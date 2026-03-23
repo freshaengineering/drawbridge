@@ -56,7 +56,7 @@ defmodule DrawbridgeCli do
     drawbridge — on-demand local dev stack proxy
 
     Usage:
-      drawbridge up [--config path] [--no-dns] [--tui]
+      drawbridge up [--config path] [--no-dns] [--tui] [--local service ...]
       drawbridge down [--config path] [--keep-dns]
       drawbridge status
       drawbridge pull [service...] [--all]

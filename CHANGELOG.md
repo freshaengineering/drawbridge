@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--local <service>` flag for `drawbridge up` — excludes services from orchestration while keeping their DNS hostnames pointed to 127.0.0.1, letting you run them from source
+- `.env.drawbridge` generation — auto-creates a sourceable env file with the local service's configured environment variables
+- Org-wide example config (`config/examples/surgeventures.drawbridge.yml`) mapping the full B2C stack with private registry images (ghcr.io + ECR)
+- `Config.exclude_services/2` and `Config.local_hostnames/2` for programmatic service filtering
+- `cpus` and `memory` fields on `Config.Service` for container resource limits (`--cpus`/`--memory` flags)
+
 ## [0.3.0] - 2026-03-23
 
 ### Added
