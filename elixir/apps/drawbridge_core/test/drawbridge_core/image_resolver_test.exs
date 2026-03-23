@@ -50,40 +50,6 @@ defmodule DrawbridgeCore.ImageResolverTest do
     assert msg =~ "failed to parse"
   end
 
-  test "resolve_all/2 resolves multiple services" do
-    runner = fn _cmd, args ->
-      image = Enum.at(args, 2)
-
-      digest =
-        case image do
-          "postgres:16" -> "sha256:pg"
-          "redis:7" -> "sha256:rd"
-        end
-
-      {Jason.encode!(%{"Digest" => digest}), 0}
-    end
-
-    services = %{
-      "postgres" => %DrawbridgeCore.Config.Service{
-        name: "postgres",
-        image: "postgres:16",
-        hostname: "pg.dev.local",
-        ports: [{5432, 5432}]
-      },
-      "redis" => %DrawbridgeCore.Config.Service{
-        name: "redis",
-        image: "redis:7",
-        hostname: "redis.dev.local",
-        ports: [{6379, 6379}]
-      }
-    }
-
-    result = ImageResolver.resolve_all(services, cmd_runner: runner)
-    assert result["postgres"].digest == "sha256:pg"
-    assert result["redis"].digest == "sha256:rd"
-    assert result["postgres"].tag == "postgres:16"
-  end
-
   test "pull_and_resolve/2 pulls then resolves" do
     call_log = :ets.new(:pull_calls, [:set, :public])
     :ets.insert(call_log, {:count, 0})

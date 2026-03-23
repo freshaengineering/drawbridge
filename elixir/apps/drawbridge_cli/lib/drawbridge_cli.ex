@@ -33,7 +33,7 @@ defmodule DrawbridgeCli do
       drawbridge down [--config path] [--keep-dns]
       drawbridge status
       drawbridge pull [service...] [--all]
-      drawbridge lock [--update] [--config path]
+      drawbridge lock [--update] [--partial] [--config path]
       drawbridge init
       drawbridge version
     """)

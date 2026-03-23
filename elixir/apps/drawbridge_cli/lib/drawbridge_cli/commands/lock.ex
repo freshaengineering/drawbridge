@@ -9,7 +9,7 @@ defmodule Mix.Tasks.Drawbridge.Lock do
   def run(args) do
     {opts, _positional, _} =
       OptionParser.parse(args,
-        switches: [config: :string, update: :boolean],
+        switches: [config: :string, update: :boolean, partial: :boolean],
         aliases: [c: :config]
       )
 
@@ -23,9 +23,9 @@ defmodule Mix.Tasks.Drawbridge.Lock do
         lock_path = Path.join(lock_dir, "drawbridge.lock")
         now = DateTime.utc_now() |> DateTime.to_iso8601()
 
-        images =
+        {images, failures} =
           config.services
-          |> Enum.reduce(%{}, fn {name, svc}, acc ->
+          |> Enum.reduce({%{}, []}, fn {name, svc}, {acc, fails} ->
             Mix.shell().info("Resolving #{name} (#{svc.image})...")
 
             result =
@@ -39,13 +39,36 @@ defmodule Mix.Tasks.Drawbridge.Lock do
             case result do
               {:ok, digest} ->
                 Mix.shell().info("  #{digest}")
-                Map.put(acc, name, %{tag: svc.image, digest: digest, locked_at: now})
+                {Map.put(acc, name, %{tag: svc.image, digest: digest, locked_at: now}), fails}
 
               {:error, reason} ->
-                Mix.shell().error("  Failed: #{reason}")
-                acc
+                Mix.shell().error("  Failed to resolve #{name}: #{reason}")
+                {acc, [{name, reason} | fails]}
             end
           end)
+
+        failures = Enum.reverse(failures)
+
+        if failures != [] and not opts[:partial] do
+          Enum.each(failures, fn {name, reason} ->
+            Mix.shell().error("WARNING: #{name} failed to resolve: #{reason}")
+          end)
+
+          Mix.raise(
+            "#{length(failures)} image(s) failed to resolve. " <>
+              "Lockfile not written. Use --partial to write an incomplete lockfile."
+          )
+        end
+
+        if failures != [] do
+          Enum.each(failures, fn {name, reason} ->
+            Mix.shell().error("WARNING: #{name} failed to resolve: #{reason}")
+          end)
+
+          Mix.shell().error(
+            "WARNING: Writing partial lockfile (#{length(failures)} image(s) unresolved)"
+          )
+        end
 
         lock_data = %{locked_at: now, images: images}
 

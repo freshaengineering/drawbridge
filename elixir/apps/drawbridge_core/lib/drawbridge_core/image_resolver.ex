@@ -22,26 +22,6 @@ defmodule DrawbridgeCore.ImageResolver do
   end
 
   @doc """
-  Resolve all service images to digests.
-
-  Returns `%{service_name => %{tag: image, digest: sha}}`.
-  Skips services that fail resolution (logs a warning).
-  """
-  def resolve_all(services, opts \\ []) do
-    services
-    |> Enum.reduce(%{}, fn {name, svc}, acc ->
-      case resolve(svc.image, opts) do
-        {:ok, digest} ->
-          Map.put(acc, name, %{tag: svc.image, digest: digest})
-
-        {:error, reason} ->
-          IO.warn("Failed to resolve #{name} (#{svc.image}): #{reason}")
-          acc
-      end
-    end)
-  end
-
-  @doc """
   Pull an image and then resolve its digest.
   """
   def pull_and_resolve(image_ref, opts \\ []) do
