@@ -288,9 +288,13 @@ defmodule DrawbridgeCore.ServiceManager do
   defp start_container_async(service) do
     self_pid = self()
     resolved_env = DrawbridgeCore.HostNetwork.resolve_env_for_container(service.env)
-    timeout = (service.boot_timeout + 5) * 1_000
+    needs_ecr = DrawbridgeCore.ImageResolver.needs_resolution?(service.image)
+    # ECR images need extra time for tag resolution + first pull
+    timeout = if needs_ecr, do: 300_000, else: (service.boot_timeout + 5) * 1_000
 
-    Logger.info("[ServiceManager] #{service.name}: starting container (timeout=#{timeout}ms)")
+    Logger.info(
+      "[ServiceManager] #{service.name}: starting container (timeout=#{div(timeout, 1000)}s#{if needs_ecr, do: ", ECR resolve+pull", else: ""})"
+    )
 
     Task.start(fn ->
       # Lazy image tag resolution — resolve ECR tags on first connection

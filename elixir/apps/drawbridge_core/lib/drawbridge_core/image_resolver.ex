@@ -146,14 +146,15 @@ defmodule DrawbridgeCore.ImageResolver do
              "--query",
              "imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]",
              "--output",
-             "text"
+             "json"
            ],
            stderr_to_stdout: true
          ) do
-      {tag, 0} ->
-        tag = String.trim(tag)
+      {output, 0} ->
+        # JSON output: "git-abc123" (with quotes) or "null"
+        tag = output |> String.trim() |> String.trim("\"")
 
-        if tag == "" or tag == "None" do
+        if tag == "" or tag == "null" or tag == "None" do
           {:error, "no tags found for #{repo}"}
         else
           {:ok, tag}
