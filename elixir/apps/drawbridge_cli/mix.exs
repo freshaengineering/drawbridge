@@ -30,6 +30,7 @@ defmodule DrawbridgeCli.MixProject do
     [
       {:drawbridge_core, in_umbrella: true},
       {:drawbridge_proxy, in_umbrella: true},
+      {:drawbridge_api, in_umbrella: true},
       {:drawbridge_tui, in_umbrella: true}
     ]
   end

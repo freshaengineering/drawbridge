@@ -13,7 +13,10 @@ defmodule DrawbridgeCli do
       ["down" | rest] -> Mix.Tasks.Drawbridge.Down.run(rest)
       ["status" | _] -> Mix.Tasks.Drawbridge.Status.run([])
       ["pull" | rest] -> Mix.Tasks.Drawbridge.Pull.run(rest)
+      ["lock" | rest] -> Mix.Tasks.Drawbridge.Lock.run(rest)
       ["init" | _] -> Mix.Tasks.Drawbridge.Init.run([])
+      ["api" | rest] -> Mix.Tasks.Drawbridge.Api.run(rest)
+      ["mcp" | rest] -> Mix.Tasks.Drawbridge.Mcp.run(rest)
       ["tui" | rest] -> Mix.Tasks.Drawbridge.Tui.run(rest)
       ["version" | _] -> IO.puts("drawbridge #{version()}")
       _ -> usage()
@@ -22,6 +25,16 @@ defmodule DrawbridgeCli do
 
   defp version do
     Application.spec(:drawbridge_cli, :vsn) |> to_string()
+  end
+
+  @doc "Find the nearest drawbridge config file, or raise if none found."
+  def find_config do
+    cond do
+      File.exists?("drawbridge.yml") -> "drawbridge.yml"
+      File.exists?("drawbridge.yaml") -> "drawbridge.yaml"
+      File.exists?("config/drawbridge.yml") -> "config/drawbridge.yml"
+      true -> Mix.raise("No drawbridge.yml found. Run `drawbridge init` to create one.")
+    end
   end
 
   defp usage do
@@ -33,8 +46,11 @@ defmodule DrawbridgeCli do
       drawbridge down [--config path] [--keep-dns]
       drawbridge status
       drawbridge pull [service...] [--all]
+      drawbridge lock [--update] [--partial] [--config path]
       drawbridge tui [--config path]
       drawbridge init
+      drawbridge api [--port 4001] [--config path]
+      drawbridge mcp [--config path]
       drawbridge version
     """)
   end

@@ -9,9 +9,18 @@ defmodule DrawbridgeCore.Config.Service do
     :boot_timeout,
     :health_check,
     :depends_on,
+    image_digest: nil,
     env: %{},
-    tls_backend: false
+    tls_backend: false,
+    protocol: nil
   ]
+
+  @doc "Returns `image@digest` when a digest is pinned, otherwise the bare image tag."
+  def resolved_image(%__MODULE__{image_digest: digest, image: image}) when is_binary(digest) do
+    "#{image}@#{digest}"
+  end
+
+  def resolved_image(%__MODULE__{image: image}), do: image
 end
 
 defmodule DrawbridgeCore.Config do
@@ -82,7 +91,8 @@ defmodule DrawbridgeCore.Config do
          boot_timeout: raw["boot_timeout"] || 30,
          health_check: raw["health_check"],
          tls_backend: raw["tls_backend"] || false,
-         depends_on: raw["depends_on"] || []
+         depends_on: raw["depends_on"] || [],
+         protocol: parse_protocol_hint(raw["protocol"])
        }}
     end
   end
@@ -149,6 +159,21 @@ defmodule DrawbridgeCore.Config do
       [] -> :ok
       dupes -> {:error, "duplicate host ports: #{Enum.join(dupes, ", ")}"}
     end
+  end
+
+  @known_protocols ~w(http1 http2 postgres redis kafka grpc tls)a
+
+  defp parse_protocol_hint(nil), do: nil
+
+  defp parse_protocol_hint(value) when is_binary(value) do
+    atom = String.to_existing_atom(value)
+    if atom in @known_protocols, do: atom, else: nil
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp parse_protocol_hint(value) when is_atom(value) do
+    if value in @known_protocols, do: value, else: nil
   end
 
   defp stringify_keys(map) when is_map(map) do
