@@ -68,15 +68,25 @@ defmodule DrawbridgeCore.HostNetwork do
 
   defp parse_gateway(json) do
     case Jason.decode(json) do
-      {:ok, %{"ipv4Gateway" => gw}} when is_binary(gw) and gw != "" ->
+      # Array format: [{"status": {"ipv4Gateway": "192.168.64.1"}, ...}]
+      {:ok, [%{"status" => %{"ipv4Gateway" => gw}} | _]} when is_binary(gw) and gw != "" ->
+        Logger.info("[HostNetwork] Discovered gateway IP: #{gw}")
         gw
 
-      {:ok, _} ->
-        Logger.warning("[HostNetwork] No ipv4Gateway in network inspect output")
+      # Flat format (older CLI versions)
+      {:ok, %{"ipv4Gateway" => gw}} when is_binary(gw) and gw != "" ->
+        Logger.info("[HostNetwork] Discovered gateway IP: #{gw}")
+        gw
+
+      {:ok, data} ->
+        Logger.warning(
+          "[HostNetwork] No ipv4Gateway in network inspect output: #{inspect(data, limit: 200)}"
+        )
+
         @default_gateway
 
-      {:error, _} ->
-        Logger.warning("[HostNetwork] Failed to parse network inspect JSON")
+      {:error, reason} ->
+        Logger.warning("[HostNetwork] Failed to parse network inspect JSON: #{inspect(reason)}")
         @default_gateway
     end
   end
