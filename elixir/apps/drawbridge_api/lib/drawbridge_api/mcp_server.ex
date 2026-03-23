@@ -17,7 +17,8 @@ defmodule DrawbridgeApi.McpServer do
     if opts[:test_mode] do
       {:ok, %{reader: nil}}
     else
-      {:ok, reader} = Task.start_link(fn -> read_loop() end)
+      server_pid = self()
+      {:ok, reader} = Task.start_link(fn -> read_loop(server_pid) end)
       {:ok, %{reader: reader}}
     end
   end
@@ -47,7 +48,7 @@ defmodule DrawbridgeApi.McpServer do
 
   def handle_info(_msg, state), do: {:noreply, state}
 
-  defp read_loop do
+  defp read_loop(server_pid) do
     case IO.read(:stdio, :line) do
       :eof ->
         :ok
@@ -59,10 +60,10 @@ defmodule DrawbridgeApi.McpServer do
         line = String.trim(line)
 
         if line != "" do
-          send(Process.whereis(__MODULE__), {:mcp_request, line})
+          send(server_pid, {:mcp_request, line})
         end
 
-        read_loop()
+        read_loop(server_pid)
     end
   end
 
@@ -149,6 +150,13 @@ defmodule DrawbridgeApi.McpServer do
 
     %{
       "content" => [%{"type" => "text", "text" => sdl}]
+    }
+  end
+
+  defp call_tool("graphql", args) when not is_map_key(args, "query") do
+    %{
+      "isError" => true,
+      "content" => [%{"type" => "text", "text" => "Missing required argument: query"}]
     }
   end
 

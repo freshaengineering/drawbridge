@@ -9,6 +9,8 @@ defmodule DrawbridgeApi.Router do
   plug(:match)
   plug(:dispatch)
 
+  # Order matters: /graphql must be matched before the catch-all / route,
+  # otherwise GraphiQL would intercept GraphQL requests.
   forward("/graphql", to: Absinthe.Plug, init_opts: [schema: DrawbridgeApi.Schema])
 
   forward("/",

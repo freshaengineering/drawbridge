@@ -25,6 +25,16 @@ defmodule DrawbridgeCli do
     Application.spec(:drawbridge_cli, :vsn) |> to_string()
   end
 
+  @doc "Find the nearest drawbridge config file, or raise if none found."
+  def find_config do
+    cond do
+      File.exists?("drawbridge.yml") -> "drawbridge.yml"
+      File.exists?("drawbridge.yaml") -> "drawbridge.yaml"
+      File.exists?("config/drawbridge.yml") -> "config/drawbridge.yml"
+      true -> Mix.raise("No drawbridge.yml found. Run `drawbridge init` to create one.")
+    end
+  end
+
   defp usage do
     IO.puts("""
     drawbridge — on-demand local dev stack proxy

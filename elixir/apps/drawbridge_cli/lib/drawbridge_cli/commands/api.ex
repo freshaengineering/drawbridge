@@ -14,7 +14,7 @@ defmodule Mix.Tasks.Drawbridge.Api do
       )
 
     port = opts[:port] || 4001
-    config_path = opts[:config] || find_config()
+    config_path = opts[:config] || DrawbridgeCli.find_config()
 
     Mix.Task.run("app.start")
 
@@ -37,14 +37,5 @@ defmodule Mix.Tasks.Drawbridge.Api do
       Plug.Cowboy.http(DrawbridgeApi.Router, [], port: port)
 
     Process.sleep(:infinity)
-  end
-
-  defp find_config do
-    cond do
-      File.exists?("drawbridge.yml") -> "drawbridge.yml"
-      File.exists?("drawbridge.yaml") -> "drawbridge.yaml"
-      File.exists?("config/drawbridge.yml") -> "config/drawbridge.yml"
-      true -> Mix.raise("No drawbridge.yml found. Run `drawbridge init` to create one.")
-    end
   end
 end

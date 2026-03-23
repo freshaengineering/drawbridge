@@ -68,6 +68,20 @@ defmodule DrawbridgeApi.McpServerTest do
       assert response["error"]["code"] == -32601
     end
 
+    test "handle_request returns error for graphql tool without query param" do
+      response =
+        call_mcp(%{
+          "method" => "tools/call",
+          "id" => 7,
+          "params" => %{"name" => "graphql", "arguments" => %{}}
+        })
+
+      assert response["id"] == 7
+      assert response["result"]["isError"] == true
+      [content] = response["result"]["content"]
+      assert content["text"] =~ "Missing required argument: query"
+    end
+
     test "handle_request returns error for unknown tool" do
       response =
         call_mcp(%{
@@ -97,8 +111,8 @@ defmodule DrawbridgeApi.McpServerTest do
         Process.group_leader(pid, Process.group_leader())
 
         send(pid, {:mcp_request, line})
-        # Wait for the GenServer to process and write
-        Process.sleep(100)
+        # Synchronize: :sys.get_state blocks until all prior messages are processed
+        :sys.get_state(pid)
 
         GenServer.stop(pid)
       end)

@@ -13,10 +13,11 @@ defmodule Mix.Tasks.Drawbridge.Mcp do
         aliases: [c: :config]
       )
 
-    config_path = opts[:config] || find_config()
+    config_path = opts[:config] || DrawbridgeCli.find_config()
 
     # Redirect logger to stderr so stdout stays clean for JSON-RPC
     Logger.configure(level: :warning)
+    Logger.configure_backend(:console, device: :standard_error)
 
     Mix.Task.run("app.start")
 
@@ -28,15 +29,6 @@ defmodule Mix.Tasks.Drawbridge.Mcp do
 
       {:error, reason} ->
         Mix.raise("Failed to load config: #{inspect(reason)}")
-    end
-  end
-
-  defp find_config do
-    cond do
-      File.exists?("drawbridge.yml") -> "drawbridge.yml"
-      File.exists?("drawbridge.yaml") -> "drawbridge.yaml"
-      File.exists?("config/drawbridge.yml") -> "config/drawbridge.yml"
-      true -> Mix.raise("No drawbridge.yml found. Run `drawbridge init` to create one.")
     end
   end
 end
