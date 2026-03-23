@@ -28,6 +28,7 @@ defmodule DrawbridgeTui.InputReader do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -53,7 +54,7 @@ defmodule DrawbridgeTui.InputReader do
 
   defp handle_key("q") do
     restore_terminal()
-    System.halt(0)
+    System.stop(0)
   end
 
   defp handle_key("j"), do: DrawbridgeTui.Dashboard.select_next()

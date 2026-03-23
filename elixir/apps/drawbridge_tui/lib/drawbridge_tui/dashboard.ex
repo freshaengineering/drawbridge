@@ -47,6 +47,7 @@ defmodule DrawbridgeTui.Dashboard do
       services: [],
       selected_index: 0,
       flash: nil,
+      flash_timer: nil,
       show_help: false
     }
 
@@ -101,9 +102,10 @@ defmodule DrawbridgeTui.Dashboard do
       svc ->
         execute_action(act, svc.name)
         label = action_label(act)
-        state = %{state | flash: "#{label} #{svc.name}..."}
+        if state.flash_timer, do: Process.cancel_timer(state.flash_timer)
+        timer = Process.send_after(self(), :clear_flash, @flash_duration)
+        state = %{state | flash: "#{label} #{svc.name}...", flash_timer: timer}
         Owl.LiveScreen.update(:dashboard, render_all(state))
-        Process.send_after(self(), :clear_flash, @flash_duration)
         {:noreply, state}
     end
   end
@@ -116,7 +118,7 @@ defmodule DrawbridgeTui.Dashboard do
 
   @impl true
   def handle_info(:clear_flash, state) do
-    state = %{state | flash: nil}
+    state = %{state | flash: nil, flash_timer: nil}
     Owl.LiveScreen.update(:dashboard, render_all(state))
     {:noreply, state}
   end
