@@ -1,0 +1,73 @@
+name: Claude Code
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt to send to Claude"
+        required: false
+        type: string
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+env:
+  ELIXIR_VERSION: "1.19.5"
+  OTP_VERSION: "28.2"
+
+jobs:
+  claude:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            elixir/deps
+            elixir/_build
+          key: mix-${{ runner.os }}-${{ hashFiles('elixir/mix.lock') }}
+
+      - name: Install dependencies
+        working-directory: elixir
+        run: mix deps.get
+
+      - name: Compile
+        working-directory: elixir
+        run: mix compile
+
+      - name: Run Claude Code
+        id: claude
+        uses: surgeventures/platform-tribe-actions/claude-code@v0
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_decode_github_private_key: ${{ secrets.CLAUDE_DECODE_PRIVATE_KEY }}
+          slack_token: ${{ secrets.SLACK_TOKEN_CLAUDE }}
+          prompt: ${{ inputs.prompt }}
