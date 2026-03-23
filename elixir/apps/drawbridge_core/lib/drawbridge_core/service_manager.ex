@@ -271,11 +271,12 @@ defmodule DrawbridgeCore.ServiceManager do
 
   defp start_container_async(service) do
     self_pid = self()
+    resolved_env = DrawbridgeCore.HostNetwork.resolve_env_for_container(service.env)
 
     Task.start(fn ->
       result =
         swift_bridge().call_agent(
-          {:start, service.name, service.image, service.ports, service.env},
+          {:start, service.name, service.image, service.ports, resolved_env},
           (service.boot_timeout + 5) * 1_000
         )
 
