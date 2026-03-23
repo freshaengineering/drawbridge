@@ -125,21 +125,36 @@ actor ContainerRuntime {
     }
 
     func inspect(name: String) async throws -> ContainerInfo {
-        let (stdout, stderr, code) = try await runCommand(["inspect", name, "--format", "json"])
+        let (stdout, stderr, code) = try await runCommand(["inspect", name])
         guard code == 0 else {
             throw RuntimeError.commandFailed("inspect \(name): \(stderr)")
         }
         let data = Data(stdout.trimmingCharacters(in: .whitespacesAndNewlines).utf8)
-        // `container inspect` may return an array or a single object depending on version
-        if let entries = try? JSONDecoder().decode([ContainerListEntry].self, from: data),
+
+        // Apple Container inspect returns an array of objects
+        if let entries = try? JSONDecoder().decode([ContainerInspectEntry].self, from: data),
            let entry = entries.first
         {
-            return mapEntry(entry)
+            return mapInspectEntry(entry, name: name)
         }
-        if let entry = try? JSONDecoder().decode(ContainerListEntry.self, from: data) {
-            return mapEntry(entry)
+        // Fallback: single object
+        if let entry = try? JSONDecoder().decode(ContainerInspectEntry.self, from: data) {
+            return mapInspectEntry(entry, name: name)
         }
+        print("[ContainerRuntime] inspect parse failed for \(name), raw: \(stdout.prefix(300))")
         throw RuntimeError.parseError("inspect output for \(name)")
+    }
+
+    private func mapInspectEntry(_ e: ContainerInspectEntry, name: String) -> ContainerInfo {
+        ContainerInfo(
+            name: e.effectiveName ?? name,
+            image: e.effectiveImage ?? "",
+            state: mapState(e.status ?? ""),
+            ipAddress: e.effectiveIP,
+            ports: [],
+            startedAt: e.startedDate.map { Date(timeIntervalSinceReferenceDate: $0) },
+            error: nil
+        )
     }
 
     // MARK: - Shell helper
