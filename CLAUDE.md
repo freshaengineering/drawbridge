@@ -4,7 +4,7 @@
 - `elixir/` — Elixir umbrella (OTP 28.2, Elixir 1.19.5)
   - `apps/drawbridge_core/` — Config, service lifecycle, Swift bridge, certs, DNS
   - `apps/drawbridge_proxy/` — Ranch-based L4 proxy (SNI + port routing)
-  - `apps/drawbridge_cli/` — Escript CLI (up, down, status, pull, lock, tui, api, mcp)
+  - `apps/drawbridge_cli/` — Escript CLI (up, down, status, pull, lock, auth, tui, api, mcp)
   - `apps/drawbridge_tui/` — Owl-based terminal dashboard
   - `apps/drawbridge_api/` — Absinthe GraphQL API + MCP server
 - `swift/` — Swift 6.0 container agent (Apple Container CLI wrapper)
