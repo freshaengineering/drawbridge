@@ -139,10 +139,12 @@ defmodule DrawbridgeCore.ServiceManager do
       name: s.service.name,
       state: s.state,
       hostname: s.service.hostname,
+      image: s.service.image,
       ports: s.ports,
       ip: s.ip,
       connections: s.active_connections,
-      uptime: uptime
+      uptime: uptime,
+      depends_on: s.service.depends_on || []
     }
 
     {:reply, info, s}

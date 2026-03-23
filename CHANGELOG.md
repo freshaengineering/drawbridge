@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GraphQL API via Absinthe (`drawbridge_api` umbrella app) — queries for services/state, mutations for boot/stop
+- MCP server over stdio JSON-RPC 2.0 (`drawbridge mcp`) — exposes `schema_sdl` and `graphql` tools for AI agent integration
+- HTTP daemon mode (`drawbridge api`) with GraphiQL playground at `/` and `/graphql` endpoint
+- `setupPrompt` query returning markdown setup guide for AI agents configuring new projects
+- `schemaSdl` query for runtime schema introspection
 - L7 protocol-aware proxy: detect HTTP/1.1, Postgres, Redis, and Kafka wire protocols on first client chunk
 - Protocol behaviour (`DrawbridgeProxy.Protocol`) with `detect/1` callback for pluggable parsers
 - ETS-backed `ProtocolRegistry` for storing per-connection protocol metadata (keyed by service + connection ref)
