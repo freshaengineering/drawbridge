@@ -33,13 +33,19 @@ defmodule DrawbridgeProxy.Protocol.Kafka do
     20 => :delete_topics
   }
 
+  # Postgres v3.0 startup magic — reject so we don't false-positive on Postgres.
+  # Postgres startup: <<len::32, 0x00030000::32, ...>> which overlaps Kafka framing.
+  @postgres_version_magic 196_608
+
   @impl true
+  def detect(<<_length::32, @postgres_version_magic::32, _rest::binary>>), do: :unknown
+
   def detect(
         <<length::32, api_key::16, api_version::16, correlation_id::32, client_id_len::16,
           rest::binary>>
       )
-      when length > 0 and api_key >= 0 and api_key <= 67 and api_version >= 0 and
-             api_version <= 20 and client_id_len >= 0 do
+      when length > 0 and api_key >= 0 and api_key <= 74 and api_version >= 0 and
+             client_id_len >= 0 do
     # Sanity check: stated length should roughly match available data
     # (length field covers everything after itself)
     expected_min = 2 + 2 + 4 + 2 + client_id_len

@@ -10,6 +10,9 @@ defmodule DrawbridgeProxy.Protocol do
 
   @callback detect(binary()) :: {:ok, metadata()} | :unknown
 
+  # Order matters: Postgres must come before Kafka because a Postgres v3.0 startup
+  # message can superficially resemble a Kafka request header. The Kafka parser also
+  # has an explicit Postgres magic-number guard, but ordering provides defence in depth.
   @parsers [
     DrawbridgeProxy.Protocol.Http1,
     DrawbridgeProxy.Protocol.Postgres,

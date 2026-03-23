@@ -65,5 +65,26 @@ defmodule DrawbridgeProxy.Protocol.KafkaTest do
     test "returns :unknown for too-short binary" do
       assert :unknown = Kafka.detect(<<0, 0, 0, 1>>)
     end
+
+    test "rejects Postgres v3.0 startup message (prevents false positive)" do
+      # Postgres startup: <<length::32, 196608::32, "user\0root\0\0">>
+      pg_params = "user\0root\0database\0test\0\0"
+      pg_len = 8 + byte_size(pg_params)
+      data = <<pg_len::32, 196_608::32, pg_params::binary>>
+
+      assert :unknown = Kafka.detect(data)
+    end
+
+    test "detects high api_version (modern Kafka clients)" do
+      client_id = "modern-client"
+      client_id_len = byte_size(client_id)
+      # Fetch v16 — higher than the old guard of 20
+      header = <<1::16, 16::16, 55::32, client_id_len::16, client_id::binary>>
+      length = byte_size(header)
+      data = <<length::32, header::binary>>
+
+      assert {:ok, %{protocol: :kafka, details: details}} = Kafka.detect(data)
+      assert details.api_version == 16
+    end
   end
 end

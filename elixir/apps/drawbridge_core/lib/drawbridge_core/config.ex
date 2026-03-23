@@ -153,9 +153,20 @@ defmodule DrawbridgeCore.Config do
     end
   end
 
+  @known_protocols ~w(http1 http2 postgres redis kafka grpc tls)a
+
   defp parse_protocol_hint(nil), do: nil
-  defp parse_protocol_hint(value) when is_binary(value), do: String.to_atom(value)
-  defp parse_protocol_hint(value) when is_atom(value), do: value
+
+  defp parse_protocol_hint(value) when is_binary(value) do
+    atom = String.to_existing_atom(value)
+    if atom in @known_protocols, do: atom, else: nil
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp parse_protocol_hint(value) when is_atom(value) do
+    if value in @known_protocols, do: value, else: nil
+  end
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), to_string(v)} end)

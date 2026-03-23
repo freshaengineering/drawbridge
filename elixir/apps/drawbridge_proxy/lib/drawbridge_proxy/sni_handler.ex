@@ -201,6 +201,7 @@ defmodule DrawbridgeProxy.SniHandler do
   # ---- private ----
 
   defp maybe_detect_protocol(_chunk, %{protocol_detected: true} = data), do: data
+  defp maybe_detect_protocol(_chunk, %{service_name: nil} = data), do: data
 
   defp maybe_detect_protocol(_chunk, %{service_name: svc, conn_ref: ref} = data) do
     # For TLS connections we can't inspect the encrypted payload,

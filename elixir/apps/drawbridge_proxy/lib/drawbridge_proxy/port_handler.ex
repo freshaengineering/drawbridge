@@ -19,6 +19,9 @@ defmodule DrawbridgeProxy.PortHandler do
 
   @backend_connect_timeout 5_000
   @boot_wait_timeout 30_000
+  # Only parse first 4KB of a chunk for protocol detection to avoid
+  # excessive allocation from large pipelined requests or payloads.
+  @max_detect_bytes 4_096
 
   # ---- Ranch protocol entry point ----
 
@@ -183,9 +186,15 @@ defmodule DrawbridgeProxy.PortHandler do
   # ---- private ----
 
   defp maybe_detect_protocol(_chunk, %{protocol_detected: true} = data), do: data
+  defp maybe_detect_protocol(_chunk, %{service_name: nil} = data), do: data
 
   defp maybe_detect_protocol(chunk, %{service_name: svc, conn_ref: ref} = data) do
-    case DrawbridgeProxy.Protocol.detect_all(chunk) do
+    detect_chunk =
+      if byte_size(chunk) > @max_detect_bytes,
+        do: binary_part(chunk, 0, @max_detect_bytes),
+        else: chunk
+
+    case DrawbridgeProxy.Protocol.detect_all(detect_chunk) do
       {:ok, meta} ->
         DrawbridgeProxy.ProtocolRegistry.store(svc, ref, meta)
 
