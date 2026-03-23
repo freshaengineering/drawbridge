@@ -10,6 +10,22 @@ defmodule DrawbridgeCore.CertManager do
   @cert_validity_days 825
   @ca_common_name "Drawbridge Local CA"
 
+  @doc "Return paths to the local CA cert, domain cert, and domain key."
+  def cert_paths(data_dir \\ nil) do
+    dir = data_dir || default_data_dir()
+    certs_dir = Path.join(Path.expand(dir), "certs")
+
+    %{
+      cert: Path.join(certs_dir, "dev.local.pem"),
+      key: Path.join(certs_dir, "dev.local-key.pem"),
+      ca: Path.join(certs_dir, "ca.pem")
+    }
+  end
+
+  defp default_data_dir do
+    Application.get_env(:drawbridge_core, :data_dir, "~/.drawbridge")
+  end
+
   @doc "Ensure certs exist for the given domain. Generate if missing."
   def ensure_certs(domain, data_dir) do
     cert_dir = Path.join(Path.expand(data_dir), "certs")

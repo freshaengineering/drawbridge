@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Fallback page for unknown SNI hostnames — TLS-terminates with local CA cert and returns a 503 HTML page listing configured services instead of silently dropping connections
+
 ## [0.2.0] - 2026-03-23
 
 ### Added

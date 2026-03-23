@@ -233,8 +233,131 @@ defmodule DrawbridgeProxy.SniHandler do
 
       {:error, reason} ->
         Logger.debug("[SniHandler] unknown service #{hostname}: #{inspect(reason)}")
-        {:stop, :normal}
+        send_fallback_page(data.socket, data.transport, hostname)
+        {:stop, :normal, data}
     end
+  end
+
+  defp send_fallback_page(socket, transport, hostname) do
+    paths = DrawbridgeCore.CertManager.cert_paths()
+
+    ssl_opts = [
+      certfile: paths.cert,
+      keyfile: paths.key
+    ]
+
+    case :ssl.handshake(socket, ssl_opts, 5_000) do
+      {:ok, ssl_socket} ->
+        html = build_fallback_html(hostname)
+
+        response =
+          "HTTP/1.1 503 Service Unavailable\r\n" <>
+            "Content-Type: text/html; charset=utf-8\r\n" <>
+            "Content-Length: #{byte_size(html)}\r\n" <>
+            "Connection: close\r\n" <>
+            "\r\n" <>
+            html
+
+        :ssl.send(ssl_socket, response)
+        :ssl.close(ssl_socket)
+
+      {:error, reason} ->
+        Logger.debug("[SniHandler] fallback TLS handshake failed: #{inspect(reason)}")
+        transport.close(socket)
+    end
+  end
+
+  defp build_fallback_html(hostname) do
+    services = fetch_service_rows()
+
+    service_rows =
+      if services == [] do
+        ~s(<tr><td colspan="4" style="text-align:center;color:#888;">No services configured</td></tr>)
+      else
+        Enum.map_join(services, "\n", fn svc ->
+          ports_str =
+            svc.ports
+            |> Enum.map(fn {h, c} -> "#{h}:#{c}" end)
+            |> Enum.join(", ")
+
+          state_color =
+            case svc.state do
+              :running -> "#4caf50"
+              :booting -> "#ff9800"
+              _ -> "#888"
+            end
+
+          """
+          <tr>
+            <td>#{html_escape(svc.name)}</td>
+            <td>#{html_escape(svc.hostname || "—")}</td>
+            <td>#{html_escape(ports_str)}</td>
+            <td style="color:#{state_color};font-weight:600;">#{html_escape(svc.state)}</td>
+          </tr>
+          """
+        end)
+      end
+
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Drawbridge — Unknown Host</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; display: flex; justify-content: center; padding: 3rem 1rem; }
+        .container { max-width: 640px; width: 100%; }
+        h1 { font-size: 1.5rem; color: #ff6b6b; margin-bottom: .5rem; }
+        .hostname { font-family: monospace; background: #16213e; padding: 2px 8px; border-radius: 4px; color: #ffd93d; }
+        p { margin: .75rem 0; line-height: 1.5; color: #aaa; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
+        th { text-align: left; padding: .5rem .75rem; border-bottom: 2px solid #333; color: #ccc; font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; }
+        td { padding: .5rem .75rem; border-bottom: 1px solid #262640; font-size: .9rem; }
+        tr:hover td { background: #16213e; }
+        .hint { margin-top: 2rem; padding: 1rem; background: #16213e; border-left: 3px solid #ffd93d; border-radius: 4px; font-size: .85rem; color: #bbb; }
+        code { font-family: monospace; color: #ffd93d; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Unknown hostname</h1>
+        <p>Drawbridge received a request for <span class="hostname">#{html_escape(hostname)}</span> but no service is configured for that hostname.</p>
+
+        <h2 style="font-size:1.1rem;margin-top:1.5rem;">Configured services</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Hostname</th><th>Ports</th><th>State</th></tr></thead>
+          <tbody>
+            #{service_rows}
+          </tbody>
+        </table>
+
+        <div class="hint">
+          To add a service, edit <code>drawbridge.yml</code> and add a <code>hostname</code> field to your service definition, then restart Drawbridge.
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+  end
+
+  defp fetch_service_rows do
+    DrawbridgeCore.ServiceManager.list_services()
+  catch
+    _, _ -> []
+  end
+
+  defp html_escape(nil), do: ""
+
+  defp html_escape(val) when is_atom(val), do: html_escape(Atom.to_string(val))
+
+  defp html_escape(str) when is_binary(str) do
+    str
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
   end
 
   defp do_connect_backend(ip, port, initial_bytes, data) do
