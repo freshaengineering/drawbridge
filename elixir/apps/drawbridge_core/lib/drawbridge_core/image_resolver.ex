@@ -11,38 +11,65 @@ defmodule DrawbridgeCore.ImageResolver do
 
   require Logger
 
+  @cache_ttl_seconds 3600
+  @cache_dir "~/.drawbridge/cache"
+
   @doc """
   Resolve an image reference. If it's an ECR image without a tag,
   query for the most recently pushed tag. Otherwise return as-is.
+
+  Resolution order: persistent_term → file cache → ECR API.
   """
   def resolve(image) do
     {registry, repo, tag} = parse_image(image)
 
     if ecr_registry?(registry) and is_nil(tag) do
-      # Check cache first
       cache_key = {:ecr_tag, registry, repo}
 
+      # 1. In-memory cache (persistent_term)
       case :persistent_term.get(cache_key, nil) do
         nil ->
-          case resolve_ecr_latest(registry, repo) do
-            {:ok, resolved_tag} ->
-              resolved = "#{registry}/#{repo}:#{resolved_tag}"
+          # 2. File cache
+          case read_file_cache(registry, repo) do
+            {:ok, resolved} ->
               :persistent_term.put(cache_key, resolved)
-              Logger.info("[ImageResolver] #{image} → #{resolved}")
+              Logger.info("[ImageResolver] #{image} → #{resolved} (file cache)")
               resolved
 
-            {:error, reason} ->
-              Logger.error("[ImageResolver] Failed to resolve #{image}: #{reason}")
-              image
+            :miss ->
+              # 3. ECR API
+              case resolve_ecr_latest(registry, repo) do
+                {:ok, resolved_tag} ->
+                  resolved = "#{registry}/#{repo}:#{resolved_tag}"
+                  :persistent_term.put(cache_key, resolved)
+                  write_file_cache(registry, repo, resolved)
+                  Logger.info("[ImageResolver] #{image} → #{resolved} (ECR API)")
+                  resolved
+
+                {:error, reason} ->
+                  Logger.error("[ImageResolver] Failed to resolve #{image}: #{reason}")
+                  image
+              end
           end
 
         cached ->
-          Logger.debug("[ImageResolver] #{image} → #{cached} (cached)")
           cached
       end
     else
       image
     end
+  end
+
+  @doc "Clear the ECR tag cache (both in-memory and file)."
+  def clear_cache do
+    cache_dir = Path.expand(@cache_dir)
+
+    if File.dir?(cache_dir) do
+      File.rm_rf!(cache_dir)
+      Logger.info("[ImageResolver] Cache cleared")
+    end
+
+    :ok
   end
 
   @doc "Check if an image needs ECR tag resolution."
@@ -179,5 +206,41 @@ defmodule DrawbridgeCore.ImageResolver do
   defp extract_ecr_region(registry) do
     # 514443763038.dkr.ecr.us-east-1.amazonaws.com → us-east-1
     registry |> String.split(".") |> Enum.at(3, "us-east-1")
+  end
+
+  # -- File cache --
+
+  defp cache_file_path(registry, repo) do
+    safe_name = String.replace("#{registry}/#{repo}", ~r"[/:]", "_")
+    Path.join([Path.expand(@cache_dir), "#{safe_name}.json"])
+  end
+
+  defp read_file_cache(registry, repo) do
+    path = cache_file_path(registry, repo)
+
+    with {:ok, json} <- File.read(path),
+         {:ok, %{"image" => image, "cached_at" => cached_at}} <- Jason.decode(json) do
+      age = System.system_time(:second) - cached_at
+
+      if age < @cache_ttl_seconds do
+        {:ok, image}
+      else
+        :miss
+      end
+    else
+      _ -> :miss
+    end
+  end
+
+  defp write_file_cache(registry, repo, resolved_image) do
+    path = cache_file_path(registry, repo)
+    dir = Path.dirname(path)
+    File.mkdir_p!(dir)
+
+    data = %{"image" => resolved_image, "cached_at" => System.system_time(:second)}
+    File.write!(path, Jason.encode!(data))
+  rescue
+    e ->
+      Logger.warning("[ImageResolver] Failed to write cache: #{Exception.message(e)}")
   end
 end
