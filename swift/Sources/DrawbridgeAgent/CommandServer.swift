@@ -36,7 +36,7 @@ actor CommandServer {
     // the actor's serial executor instead.
     private let outputLock = NSLock()
 
-    private func writeLine(_ line: String) {
+    nonisolated private func writeLine(_ line: String) {
         outputLock.lock()
         print(line)
         fflush(stdout)
@@ -104,7 +104,7 @@ actor CommandServer {
                     writeLine(errorResponse(id: id, msg: "pull requires 'image'", code: "invalid_args"))
                     return
                 }
-                try await manager.pullImageStreaming(image: image) { [weak self] progressLine in
+                _ = try await manager.pullImageStreaming(image: image) { [weak self] progressLine in
                     guard let self = self else { return }
                     let progress = self.parsePullProgress(line: progressLine, image: image)
                     let progressJson = self.progressResponse(id: id, data: progress)
