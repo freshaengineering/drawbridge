@@ -1,17 +1,17 @@
 defmodule Mix.Tasks.Drawbridge.Status do
   @moduledoc "Show status of all Drawbridge services."
-  @shortdoc "Show service status"
 
-  use Mix.Task
+  if Code.ensure_loaded?(Mix.Task) do
+    use Mix.Task
+  end
 
-  @impl Mix.Task
   def run(_args) do
-    Mix.Task.run("app.start")
+    DrawbridgeCli.ensure_started()
 
     services = DrawbridgeCore.ServiceManager.list_services()
 
     if services == [] do
-      Mix.shell().info("No services configured. Is Drawbridge running?")
+      IO.puts("No services configured. Is Drawbridge running?")
     else
       header =
         String.pad_trailing("Service", 18) <>
@@ -21,9 +21,9 @@ defmodule Mix.Tasks.Drawbridge.Status do
           String.pad_trailing("Conns", 8) <>
           "Uptime"
 
-      Mix.shell().info("")
-      Mix.shell().info("  #{header}")
-      Mix.shell().info("  #{String.duplicate("─", 90)}")
+      IO.puts("")
+      IO.puts("  #{header}")
+      IO.puts("  #{String.duplicate("─", 90)}")
 
       Enum.each(services, fn svc ->
         state_str = format_state(svc.state)
@@ -38,10 +38,10 @@ defmodule Mix.Tasks.Drawbridge.Status do
             String.pad_trailing(to_string(svc.connections), 8) <>
             uptime_str
 
-        Mix.shell().info("  #{row}")
+        IO.puts("  #{row}")
       end)
 
-      Mix.shell().info("")
+      IO.puts("")
     end
   end
 

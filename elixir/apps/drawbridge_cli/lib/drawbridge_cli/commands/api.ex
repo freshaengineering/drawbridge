@@ -1,11 +1,12 @@
 defmodule Mix.Tasks.Drawbridge.Api do
   @moduledoc "Start the Drawbridge GraphQL HTTP server."
-  @shortdoc "Start GraphQL API server"
 
-  use Mix.Task
+  if Code.ensure_loaded?(Mix.Task) do
+    use Mix.Task
+  end
+
   require Logger
 
-  @impl Mix.Task
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,
@@ -16,7 +17,7 @@ defmodule Mix.Tasks.Drawbridge.Api do
     port = opts[:port] || 4001
     config_path = opts[:config] || DrawbridgeCli.find_config()
 
-    Mix.Task.run("app.start")
+    DrawbridgeCli.ensure_started()
 
     case DrawbridgeCore.Config.load(config_path) do
       {:ok, config} ->
@@ -24,7 +25,8 @@ defmodule Mix.Tasks.Drawbridge.Api do
         start_http(port)
 
       {:error, reason} ->
-        Mix.raise("Failed to load config: #{inspect(reason)}")
+        IO.puts(:stderr, "error: Failed to load config: #{inspect(reason)}")
+        System.halt(1)
     end
   end
 

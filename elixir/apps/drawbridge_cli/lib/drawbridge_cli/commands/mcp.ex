@@ -1,11 +1,12 @@
 defmodule Mix.Tasks.Drawbridge.Mcp do
   @moduledoc "Start the Drawbridge MCP server (stdio JSON-RPC)."
-  @shortdoc "Start MCP server"
 
-  use Mix.Task
+  if Code.ensure_loaded?(Mix.Task) do
+    use Mix.Task
+  end
+
   require Logger
 
-  @impl Mix.Task
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,
@@ -19,7 +20,7 @@ defmodule Mix.Tasks.Drawbridge.Mcp do
     Logger.configure(level: :warning)
     Logger.configure_backend(:console, device: :standard_error)
 
-    Mix.Task.run("app.start")
+    DrawbridgeCli.ensure_started()
 
     case DrawbridgeCore.Config.load(config_path) do
       {:ok, config} ->
@@ -28,7 +29,8 @@ defmodule Mix.Tasks.Drawbridge.Mcp do
         Process.sleep(:infinity)
 
       {:error, reason} ->
-        Mix.raise("Failed to load config: #{inspect(reason)}")
+        IO.puts(:stderr, "error: Failed to load config: #{inspect(reason)}")
+        System.halt(1)
     end
   end
 end

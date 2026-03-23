@@ -1,11 +1,12 @@
 defmodule Mix.Tasks.Drawbridge.Up do
   @moduledoc "Start the Drawbridge proxy and container orchestrator."
-  @shortdoc "Start Drawbridge"
 
-  use Mix.Task
+  if Code.ensure_loaded?(Mix.Task) do
+    use Mix.Task
+  end
+
   require Logger
 
-  @impl Mix.Task
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,
@@ -13,7 +14,7 @@ defmodule Mix.Tasks.Drawbridge.Up do
         aliases: [c: :config]
       )
 
-    config_path = opts[:config] || find_config()
+    config_path = opts[:config] || DrawbridgeCli.find_config()
 
     Logger.info("[Drawbridge] Loading config from #{config_path}")
 
@@ -22,35 +23,25 @@ defmodule Mix.Tasks.Drawbridge.Up do
         boot(config, opts, config_path)
 
       {:error, reason} ->
-        Mix.raise("Failed to load config: #{inspect(reason)}")
+        IO.puts(:stderr, "error: Failed to load config: #{inspect(reason)}")
+        System.halt(1)
     end
   end
 
   defp boot(config, opts, config_path) do
-    # Start the applications
-    Mix.Task.run("app.start")
+    DrawbridgeCli.ensure_started()
 
-    # Ensure TLS certs exist
     data_dir = Application.get_env(:drawbridge_core, :data_dir, "~/.drawbridge")
-    Application.put_env(:drawbridge_core, :domain, config.domain)
 
     {:ok, certs} = DrawbridgeCore.CertManager.ensure_certs(config.domain, data_dir)
     Logger.info("[Drawbridge] TLS certs ready at #{certs.cert}")
 
-    # Configure DNS resolver
     unless opts[:no_dns] do
       DrawbridgeCore.DnsManager.setup(config.domain)
     end
 
-    # Start service orchestrator (pass config_path so lockfile overlay works)
     DrawbridgeCore.Orchestrator.start(config, config_path: config_path)
 
-    # Start shared PG-aware listeners for database-routed services.
-    # Multiple services can share a single port when disambiguated by the
-    # database name in the Postgres StartupMessage.
-    start_pg_listeners(config)
-
-    # Print status
     print_status(config)
 
     Logger.info("[Drawbridge] Proxy running. Hit Ctrl+C to stop.")
@@ -58,23 +49,22 @@ defmodule Mix.Tasks.Drawbridge.Up do
     if opts[:tui] do
       DrawbridgeTui.start(config.domain)
     else
-      # Block until interrupted
       Process.sleep(:infinity)
     end
   end
 
   defp print_status(config) do
-    Mix.shell().info("")
-    Mix.shell().info("  Drawbridge is up")
-    Mix.shell().info("  Domain: *.#{config.domain}")
-    Mix.shell().info("")
+    IO.puts("")
+    IO.puts("  Drawbridge is up")
+    IO.puts("  Domain: *.#{config.domain}")
+    IO.puts("")
 
     header =
       String.pad_trailing("Service", 20) <>
         String.pad_trailing("Hostname", 30) <> String.pad_trailing("Ports", 20) <> "State"
 
-    Mix.shell().info("  #{header}")
-    Mix.shell().info("  #{String.duplicate("─", 80)}")
+    IO.puts("  #{header}")
+    IO.puts("  #{String.duplicate("─", 80)}")
 
     Enum.each(config.services, fn {name, svc} ->
       ports = Enum.map_join(svc.ports, ", ", fn {h, c} -> "#{h}:#{c}" end)
@@ -85,34 +75,9 @@ defmodule Mix.Tasks.Drawbridge.Up do
           String.pad_trailing(ports, 20) <>
           "sleeping"
 
-      Mix.shell().info("  #{row}")
+      IO.puts("  #{row}")
     end)
 
-    Mix.shell().info("")
-  end
-
-  defp start_pg_listeners(config) do
-    for {port, _services} <- DrawbridgeCore.Orchestrator.pg_listener_ports(config) do
-      name = "pg_#{port}"
-
-      case DrawbridgeProxy.ListenerSupervisor.start_port_listener(name, port, pg_aware: true) do
-        {:ok, _pid} ->
-          Logger.info("[Drawbridge] started pg_aware listener on port #{port}")
-
-        {:error, reason} ->
-          Logger.warning(
-            "[Drawbridge] failed to start pg_aware listener on port #{port}: #{inspect(reason)}"
-          )
-      end
-    end
-  end
-
-  defp find_config do
-    cond do
-      File.exists?("drawbridge.yml") -> "drawbridge.yml"
-      File.exists?("drawbridge.yaml") -> "drawbridge.yaml"
-      File.exists?("config/drawbridge.yml") -> "config/drawbridge.yml"
-      true -> Mix.raise("No drawbridge.yml found. Run `mix drawbridge.init` to create one.")
-    end
+    IO.puts("")
   end
 end

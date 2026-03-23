@@ -1,6 +1,12 @@
 defmodule DrawbridgeCli do
   @moduledoc "Escript entry point for the Drawbridge CLI."
 
+  @doc "Start OTP applications needed by the CLI (works outside Mix)."
+  def ensure_started do
+    Application.ensure_all_started(:drawbridge_core)
+    Application.ensure_all_started(:drawbridge_proxy)
+  end
+
   def main(args) do
     {_opts, command, _} =
       OptionParser.parse(args,
@@ -27,13 +33,21 @@ defmodule DrawbridgeCli do
     Application.spec(:drawbridge_cli, :vsn) |> to_string()
   end
 
-  @doc "Find the nearest drawbridge config file, or raise if none found."
+  @doc "Find the nearest drawbridge config file, or halt with error if none found."
   def find_config do
     cond do
-      File.exists?("drawbridge.yml") -> "drawbridge.yml"
-      File.exists?("drawbridge.yaml") -> "drawbridge.yaml"
-      File.exists?("config/drawbridge.yml") -> "config/drawbridge.yml"
-      true -> Mix.raise("No drawbridge.yml found. Run `drawbridge init` to create one.")
+      File.exists?("drawbridge.yml") ->
+        "drawbridge.yml"
+
+      File.exists?("drawbridge.yaml") ->
+        "drawbridge.yaml"
+
+      File.exists?("config/drawbridge.yml") ->
+        "config/drawbridge.yml"
+
+      true ->
+        IO.puts(:stderr, "error: No drawbridge.yml found. Run \`drawbridge init\` to create one.")
+        System.halt(1)
     end
   end
 

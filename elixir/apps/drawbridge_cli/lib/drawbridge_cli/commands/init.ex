@@ -1,8 +1,9 @@
 defmodule Mix.Tasks.Drawbridge.Init do
   @moduledoc "Generate a starter drawbridge.yml in the current directory."
-  @shortdoc "Initialize Drawbridge config"
 
-  use Mix.Task
+  if Code.ensure_loaded?(Mix.Task) do
+    use Mix.Task
+  end
 
   @default_config """
   # Drawbridge configuration
@@ -44,15 +45,14 @@ defmodule Mix.Tasks.Drawbridge.Init do
     #     - redis
   """
 
-  @impl Mix.Task
   def run(_args) do
     target = "drawbridge.yml"
 
     if File.exists?(target) do
-      Mix.shell().info("#{target} already exists.")
+      IO.puts("#{target} already exists.")
     else
       File.write!(target, @default_config)
-      Mix.shell().info("Created #{target} — edit it to configure your services.")
+      IO.puts("Created #{target} — edit it to configure your services.")
     end
   end
 end

@@ -1,10 +1,10 @@
 defmodule Mix.Tasks.Drawbridge.Tui do
   @moduledoc "Launch the Drawbridge TUI dashboard."
-  @shortdoc "Start Drawbridge with TUI dashboard"
 
-  use Mix.Task
+  if Code.ensure_loaded?(Mix.Task) do
+    use Mix.Task
+  end
 
-  @impl Mix.Task
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,

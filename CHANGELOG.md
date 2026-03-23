@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CLI escript mode: replace `Mix.Task.run/Mix.shell/Mix.raise` with stdlib equivalents so commands work outside Mix
 - Reset idle timer on every relayed data packet, not just on connection release — long-running streaming connections now properly keep services alive
 
 
