@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Drawbridge.Setup do
-  @moduledoc "One-time system configuration: CA certs, keychain trust, DNS resolver."
+  @moduledoc "One-time system configuration: CA certs, keychain trust, /etc/hosts DNS."
 
   if Code.ensure_loaded?(Mix.Task) do
     use Mix.Task
@@ -10,8 +10,8 @@ defmodule Mix.Tasks.Drawbridge.Setup do
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,
-        switches: [domain: :string],
-        aliases: [d: :domain]
+        switches: [domain: :string, config: :string],
+        aliases: [d: :domain, c: :config]
       )
 
     DrawbridgeCli.ensure_started()
@@ -23,10 +23,12 @@ defmodule Mix.Tasks.Drawbridge.Setup do
     IO.puts("[setup] Data dir: #{data_dir}")
     IO.puts("")
 
+    # 1. TLS certs
     IO.puts("[setup] Checking TLS certificates...")
     {:ok, certs} = DrawbridgeCore.CertManager.ensure_certs(domain, data_dir)
     IO.puts("[setup] TLS certs ready at #{certs.cert}")
 
+    # 2. CA trust
     IO.puts("[setup] Checking CA trust...")
 
     case System.cmd("security", ["verify-cert", "-c", certs.ca_cert], stderr_to_stdout: true) do
@@ -38,17 +40,23 @@ defmodule Mix.Tasks.Drawbridge.Setup do
         DrawbridgeCore.CertManager.install_ca_trust(certs.ca_cert)
     end
 
-    IO.puts("[setup] Checking DNS resolver...")
+    # 3. DNS via /etc/hosts
+    config_path = opts[:config] || DrawbridgeCli.find_config()
+    IO.puts("[setup] Configuring /etc/hosts from #{config_path} (may prompt for sudo)...")
 
-    case DrawbridgeCore.DnsManager.status(domain) do
-      {:ok, :configured} ->
-        IO.puts("[setup] DNS resolver already configured for *.#{domain}, skipping")
+    case DrawbridgeCore.Config.load(config_path) do
+      {:ok, config} ->
+        case DrawbridgeCore.DnsManager.setup_hosts(config) do
+          :ok -> IO.puts("[setup] /etc/hosts updated")
+          {:error, reason} -> IO.puts(:stderr, "[setup] Failed to update /etc/hosts: #{reason}")
+        end
 
-      {:ok, :not_configured} ->
-        IO.puts("[setup] Configuring DNS resolver for *.#{domain} (may prompt for sudo)...")
-        DrawbridgeCore.DnsManager.setup(domain)
+      {:error, reason} ->
+        IO.puts(:stderr, "[setup] Cannot load config: #{inspect(reason)}")
+        IO.puts(:stderr, "[setup] Skipping /etc/hosts — run with --config <path> to specify")
     end
 
+    # 4. Verify
     IO.puts("")
     IO.puts("[setup] Verification:")
 
