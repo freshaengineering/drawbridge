@@ -9,7 +9,7 @@ defmodule Mix.Tasks.Drawbridge.Up do
   def run(args) do
     {opts, _, _} =
       OptionParser.parse(args,
-        switches: [config: :string, no_dns: :boolean],
+        switches: [config: :string, no_dns: :boolean, tui: :boolean],
         aliases: [c: :config]
       )
 
@@ -49,8 +49,12 @@ defmodule Mix.Tasks.Drawbridge.Up do
 
     Logger.info("[Drawbridge] Proxy running. Hit Ctrl+C to stop.")
 
-    # Block until interrupted
-    Process.sleep(:infinity)
+    if opts[:tui] do
+      DrawbridgeTui.start(config.domain)
+    else
+      # Block until interrupted
+      Process.sleep(:infinity)
+    end
   end
 
   defp print_status(config) do
