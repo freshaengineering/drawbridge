@@ -62,9 +62,18 @@ actor ContainerManager {
         }
         print("[ContainerManager] \(name): step 1/3 — pull complete")
 
-        // Remove stale container if it exists (e.g. from a previous crashed run)
+        // Reuse existing container if it's already running
         if let existing = try? await runtime.inspect(name: name) {
+            if existing.state == .running {
+                print("[ContainerManager] \(name): already running at \(existing.ipAddress ?? "unknown"), reusing")
+                containers[name] = existing
+                return existing
+            }
+            // Stop then remove stale container
             print("[ContainerManager] \(name): removing stale container (state=\(existing.state.rawValue))")
+            if existing.state == .running || existing.state == .booting {
+                try? await runtime.stop(name: name)
+            }
             try? await runtime.remove(name: name)
         }
 
