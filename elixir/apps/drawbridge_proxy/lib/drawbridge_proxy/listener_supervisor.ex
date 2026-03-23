@@ -58,16 +58,26 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
   Dynamically start a port-based listener for a service.
   Called at runtime when ServiceManager registers a service with a dedicated port.
   """
-  @spec start_port_listener(atom() | String.t(), non_neg_integer()) ::
+  @spec start_port_listener(atom() | String.t(), non_neg_integer(), keyword()) ::
           {:ok, pid()} | {:error, term()}
-  def start_port_listener(service_name, port) do
+  def start_port_listener(service_name, port, opts \\ []) do
+    pg_aware = Keyword.get(opts, :pg_aware, false)
+    listener_id = if pg_aware, do: {:pg_listener, port}, else: {:port_listener, service_name}
+
+    handler_opts =
+      if pg_aware do
+        [pg_aware: true, service_name: service_name]
+      else
+        [service_name: service_name]
+      end
+
     child_spec =
       :ranch.child_spec(
-        {:port_listener, service_name},
+        listener_id,
         :ranch_tcp,
         %{socket_opts: [port: port]},
         DrawbridgeProxy.PortHandler,
-        service_name: service_name
+        handler_opts
       )
 
     case Supervisor.start_child(__MODULE__, child_spec) do
@@ -94,6 +104,31 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
       :ok ->
         Supervisor.delete_child(__MODULE__, id)
         Logger.info("[ListenerSupervisor] stopped port listener #{service_name}")
+        :ok
+
+      {:error, :not_found} ->
+        :ok
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Stop and remove a PG-aware listener by its port.
+
+  PG-aware listeners use `{:pg_listener, port}` as child ID (not
+  `{:port_listener, service_name}`), so `stop_port_listener/1` can't
+  reach them.
+  """
+  @spec stop_pg_listener(non_neg_integer()) :: :ok | {:error, term()}
+  def stop_pg_listener(port) do
+    id = {:pg_listener, port}
+
+    case Supervisor.terminate_child(__MODULE__, id) do
+      :ok ->
+        Supervisor.delete_child(__MODULE__, id)
+        Logger.info("[ListenerSupervisor] stopped pg listener on port #{port}")
         :ok
 
       {:error, :not_found} ->

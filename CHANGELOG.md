@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PostgreSQL wire protocol routing by database name — multiple PG services share port 5432, routed by database extracted from StartupMessage
+- SSLRequest denial (`N` response) for PG-aware listeners, client retries with plain StartupMessage
+- `database` field in service config for PG database-routed services
+- Fallback to port-based routing when database name doesn't match any service
 - TUI keyboard navigation — `j`/`k` to select services, `b`/`s`/`r` to boot/stop/restart, `q` to quit, `?` for help overlay
 - TUI dependency graph — ASCII visualization of service `depends_on` relationships below the service table
 - TUI flash messages — brief confirmation when triggering service actions
@@ -20,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Reset idle timer on every relayed data packet, not just on connection release — long-running streaming connections now properly keep services alive
+
 
 ## [0.2.0] - 2026-03-23
 

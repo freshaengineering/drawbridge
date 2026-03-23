@@ -12,7 +12,8 @@ defmodule DrawbridgeCore.Config.Service do
     image_digest: nil,
     env: %{},
     tls_backend: false,
-    protocol: nil
+    protocol: nil,
+    database: nil
   ]
 
   @doc "Returns `image@digest` when a digest is pinned, otherwise the bare image tag."
@@ -92,7 +93,8 @@ defmodule DrawbridgeCore.Config do
          health_check: raw["health_check"],
          tls_backend: raw["tls_backend"] || false,
          depends_on: raw["depends_on"] || [],
-         protocol: parse_protocol_hint(raw["protocol"])
+         protocol: parse_protocol_hint(raw["protocol"]),
+         database: raw["database"]
        }}
     end
   end
@@ -149,15 +151,47 @@ defmodule DrawbridgeCore.Config do
   end
 
   defp validate_no_duplicate_host_ports(services) do
-    host_ports =
-      services
+    # Services with a `database` field share a port and are disambiguated at the
+    # protocol level, so only non-database services can collide.
+    {db_services, plain_services} =
+      Enum.split_with(services, fn {_, svc} -> svc.database != nil end)
+
+    # Plain (non-database) services must have unique host ports
+    plain_ports =
+      plain_services
       |> Enum.flat_map(fn {_, svc} -> Enum.map(svc.ports, fn {hp, _} -> hp end) end)
 
-    duplicates = host_ports -- Enum.uniq(host_ports)
+    plain_dupes = plain_ports -- Enum.uniq(plain_ports)
 
-    case duplicates do
-      [] -> :ok
-      dupes -> {:error, "duplicate host ports: #{Enum.join(dupes, ", ")}"}
+    # Database-routed services sharing a port must have unique database names
+    db_keys =
+      db_services
+      |> Enum.map(fn {_, svc} -> svc.database end)
+
+    db_dupes = db_keys -- Enum.uniq(db_keys)
+
+    # A database-routed service also can't collide with a plain service on the
+    # same port (no fallback possible if the port is exclusively owned)
+    db_ports =
+      db_services
+      |> Enum.flat_map(fn {_, svc} -> Enum.map(svc.ports, fn {hp, _} -> hp end) end)
+      |> Enum.uniq()
+
+    port_conflicts = Enum.filter(db_ports, fn p -> p in plain_ports end)
+
+    cond do
+      plain_dupes != [] ->
+        {:error, "duplicate host ports: #{Enum.join(plain_dupes, ", ")}"}
+
+      db_dupes != [] ->
+        {:error, "duplicate database names: #{Enum.join(db_dupes, ", ")}"}
+
+      port_conflicts != [] ->
+        {:error,
+         "port #{Enum.join(port_conflicts, ", ")} is used by both database-routed and plain services"}
+
+      true ->
+        :ok
     end
   end
 

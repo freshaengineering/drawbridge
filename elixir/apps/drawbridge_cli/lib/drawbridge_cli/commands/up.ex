@@ -45,6 +45,11 @@ defmodule Mix.Tasks.Drawbridge.Up do
     # Start service orchestrator (pass config_path so lockfile overlay works)
     DrawbridgeCore.Orchestrator.start(config, config_path: config_path)
 
+    # Start shared PG-aware listeners for database-routed services.
+    # Multiple services can share a single port when disambiguated by the
+    # database name in the Postgres StartupMessage.
+    start_pg_listeners(config)
+
     # Print status
     print_status(config)
 
@@ -84,6 +89,22 @@ defmodule Mix.Tasks.Drawbridge.Up do
     end)
 
     Mix.shell().info("")
+  end
+
+  defp start_pg_listeners(config) do
+    for {port, _services} <- DrawbridgeCore.Orchestrator.pg_listener_ports(config) do
+      name = "pg_#{port}"
+
+      case DrawbridgeProxy.ListenerSupervisor.start_port_listener(name, port, pg_aware: true) do
+        {:ok, _pid} ->
+          Logger.info("[Drawbridge] started pg_aware listener on port #{port}")
+
+        {:error, reason} ->
+          Logger.warning(
+            "[Drawbridge] failed to start pg_aware listener on port #{port}: #{inspect(reason)}"
+          )
+      end
+    end
   end
 
   defp find_config do

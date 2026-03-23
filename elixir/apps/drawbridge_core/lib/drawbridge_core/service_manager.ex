@@ -98,7 +98,12 @@ defmodule DrawbridgeCore.ServiceManager do
 
   @impl true
   def init(%DrawbridgeCore.Config.Service{} = service) do
-    DrawbridgeCore.ServiceRegistry.register_service(service.name, service.hostname, service.ports)
+    DrawbridgeCore.ServiceRegistry.register_service(
+      service.name,
+      service.hostname,
+      service.ports,
+      database: service.database
+    )
 
     state = %__MODULE__{
       service: service,
