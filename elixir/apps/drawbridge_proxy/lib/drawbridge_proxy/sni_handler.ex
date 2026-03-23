@@ -139,6 +139,7 @@ defmodule DrawbridgeProxy.SniHandler do
         %{msg_ok: msg_ok, socket: socket, backend_socket: backend, transport: transport} = data
       ) do
     data = maybe_detect_protocol(chunk, data)
+    DrawbridgeCore.ServiceManager.ack(data.service_name)
 
     case :gen_tcp.send(backend, chunk) do
       :ok ->
@@ -156,6 +157,8 @@ defmodule DrawbridgeProxy.SniHandler do
         {:tcp, socket, chunk},
         %{backend_socket: socket, socket: client, transport: transport} = data
       ) do
+    DrawbridgeCore.ServiceManager.ack(data.service_name)
+
     case transport.send(client, chunk) do
       :ok ->
         :inet.setopts(socket, active: :once)
