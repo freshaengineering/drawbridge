@@ -21,8 +21,8 @@ defmodule DrawbridgeProxy.SniHandler do
 
   @max_buffer 16_384
   @backend_connect_timeout 5_000
-  # max time to wait for a container to boot before dropping the connection
-  @boot_wait_timeout 30_000
+  # Max time to wait for container boot (ECR resolve + pull + start can take minutes)
+  @boot_wait_timeout 300_000
 
   # ---- Ranch protocol entry point ----
 
