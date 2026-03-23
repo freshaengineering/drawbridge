@@ -98,7 +98,9 @@ defmodule DrawbridgeCore.JsonBridge do
     id_str = Integer.to_string(id)
 
     json = encode_command(id_str, command)
-    timer = Process.send_after(self(), {:timeout, id_str}, timeout)
+    # send_after doesn't accept :infinity — use 24 hours as "no timeout"
+    ms = if timeout == :infinity, do: 86_400_000, else: timeout
+    timer = Process.send_after(self(), {:timeout, id_str}, ms)
 
     pending = Map.put(state.pending, id_str, {from, timer})
     state = %{state | next_id: id + 1, pending: pending}
