@@ -47,6 +47,7 @@ defmodule DrawbridgeProxy.PortHandler do
 
     service_name = Keyword.get(opts, :service_name)
     pg_aware = Keyword.get(opts, :pg_aware, false)
+    grpc_aware = Keyword.get(opts, :grpc_aware, false)
 
     data = %{
       transport: transport,
@@ -57,6 +58,7 @@ defmodule DrawbridgeProxy.PortHandler do
       conn_ref: make_ref(),
       protocol_detected: false,
       pg_aware: pg_aware,
+      grpc_aware: grpc_aware,
       buffer: <<>>,
       msg_ok: msg_ok,
       msg_closed: msg_closed,
@@ -64,13 +66,19 @@ defmodule DrawbridgeProxy.PortHandler do
       started_at: System.monotonic_time(:millisecond)
     }
 
-    if pg_aware do
-      actions = [{:state_timeout, @pg_startup_timeout, :pg_timeout}]
-      :gen_statem.enter_loop(__MODULE__, [], :waiting_pg_startup, data, actions)
-    else
-      DrawbridgeCore.Telemetry.emit_connection_start(service_name, :port)
-      actions = [{:state_timeout, 0, :do_connect}]
-      :gen_statem.enter_loop(__MODULE__, [], :connecting, data, actions)
+    cond do
+      pg_aware ->
+        actions = [{:state_timeout, @pg_startup_timeout, :pg_timeout}]
+        :gen_statem.enter_loop(__MODULE__, [], :waiting_pg_startup, data, actions)
+
+      grpc_aware ->
+        actions = [{:state_timeout, 5_000, :grpc_timeout}]
+        :gen_statem.enter_loop(__MODULE__, [], :waiting_grpc_authority, data, actions)
+
+      true ->
+        DrawbridgeCore.Telemetry.emit_connection_start(service_name, :port)
+        actions = [{:state_timeout, 0, :do_connect}]
+        :gen_statem.enter_loop(__MODULE__, [], :connecting, data, actions)
     end
   end
 
@@ -118,6 +126,59 @@ defmodule DrawbridgeProxy.PortHandler do
 
   def waiting_pg_startup(event_type, event, data),
     do: handle_common(event_type, event, :waiting_pg_startup, data)
+
+  # ---- waiting_grpc_authority — buffer HTTP/2 bytes for :authority ----
+
+  def waiting_grpc_authority(
+        :info,
+        {msg_ok, socket, chunk},
+        %{msg_ok: msg_ok, socket: socket, transport: transport, buffer: buf} = data
+      ) do
+    new_buf = buf <> chunk
+
+    if byte_size(new_buf) > 8_192 do
+      Logger.debug("[PortHandler] gRPC buffer exceeded, dropping")
+      {:stop, :normal}
+    else
+      case DrawbridgeProxy.Protocol.Http2.extract_authority(new_buf) do
+        {:ok, authority} ->
+          Logger.info("[PortHandler] gRPC routing authority=#{authority}")
+
+          case DrawbridgeCore.ServiceRegistry.lookup_by_hostname(authority) do
+            {:ok, _pid} ->
+              data = %{data | service_name: authority, buffer: new_buf}
+              DrawbridgeCore.Telemetry.emit_connection_start(authority, :grpc)
+              {:next_state, :connecting, data, [{:state_timeout, 0, :do_connect}]}
+
+            :error ->
+              Logger.debug("[PortHandler] no service for authority=#{authority}, falling back")
+              fallback_to_port_routing(%{data | buffer: new_buf})
+          end
+
+        {:error, :incomplete} ->
+          :ok = transport.setopts(socket, active: :once)
+          {:keep_state, %{data | buffer: new_buf}}
+
+        {:error, _reason} ->
+          fallback_to_port_routing(%{data | buffer: new_buf})
+      end
+    end
+  end
+
+  def waiting_grpc_authority(:state_timeout, :grpc_timeout, data) do
+    Logger.debug("[PortHandler] gRPC authority timeout, falling back to port routing")
+    fallback_to_port_routing(data)
+  end
+
+  def waiting_grpc_authority(:info, {msg_closed, socket}, %{
+        msg_closed: msg_closed,
+        socket: socket
+      }) do
+    {:stop, :normal}
+  end
+
+  def waiting_grpc_authority(event_type, event, data),
+    do: handle_common(event_type, event, :waiting_grpc_authority, data)
 
   # ---- connecting — initial state ----
 

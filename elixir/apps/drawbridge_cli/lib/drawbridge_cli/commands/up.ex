@@ -74,6 +74,17 @@ defmodule Mix.Tasks.Drawbridge.Up do
     orchestrated_config = DrawbridgeCore.Config.exclude_services(config, local_services)
     DrawbridgeCore.Orchestrator.start(orchestrated_config, config_path: config_path)
 
+    # Start protocol-aware listeners for services sharing ports
+    for {port, _} <- DrawbridgeCore.Orchestrator.pg_listener_ports(orchestrated_config) do
+      Logger.info("[Drawbridge] Starting PG-aware listener on port #{port}")
+      DrawbridgeProxy.ListenerSupervisor.start_port_listener(nil, port, pg_aware: true)
+    end
+
+    for {port, _} <- DrawbridgeCore.Orchestrator.grpc_listener_ports(orchestrated_config) do
+      Logger.info("[Drawbridge] Starting gRPC-aware listener on port #{port}")
+      DrawbridgeProxy.ListenerSupervisor.start_port_listener(nil, port, grpc_aware: true)
+    end
+
     print_status(orchestrated_config, config, local_services)
 
     Logger.info("[Drawbridge] Proxy running. Hit Ctrl+C to stop.")

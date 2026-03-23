@@ -62,13 +62,20 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
           {:ok, pid()} | {:error, term()}
   def start_port_listener(service_name, port, opts \\ []) do
     pg_aware = Keyword.get(opts, :pg_aware, false)
-    listener_id = if pg_aware, do: {:pg_listener, port}, else: {:port_listener, service_name}
+    grpc_aware = Keyword.get(opts, :grpc_aware, false)
+
+    listener_id =
+      cond do
+        pg_aware -> {:pg_listener, port}
+        grpc_aware -> {:grpc_listener, port}
+        true -> {:port_listener, service_name}
+      end
 
     handler_opts =
-      if pg_aware do
-        [pg_aware: true, service_name: service_name]
-      else
-        [service_name: service_name]
+      cond do
+        pg_aware -> [pg_aware: true, service_name: service_name]
+        grpc_aware -> [grpc_aware: true, service_name: service_name]
+        true -> [service_name: service_name]
       end
 
     child_spec =

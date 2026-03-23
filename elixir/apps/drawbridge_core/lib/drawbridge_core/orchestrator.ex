@@ -5,8 +5,9 @@ defmodule DrawbridgeCore.Orchestrator do
   Called by `drawbridge up` / `drawbridge down` CLI commands.
   """
 
-  @doc "Start ServiceManagers for all configured services."
+  @doc "Start ServiceManagers for all configured services and protocol-aware listeners."
   def start(%DrawbridgeCore.Config{} = config, opts \\ []) do
+    require Logger
     config = maybe_overlay_lockfile(config, opts)
 
     Enum.each(config.services, fn {_name, service} ->
@@ -31,6 +32,16 @@ defmodule DrawbridgeCore.Orchestrator do
     |> Map.values()
     |> Enum.filter(& &1.database)
     |> Enum.group_by(fn svc -> svc.ports |> hd() |> elem(0) end)
+    |> Enum.to_list()
+  end
+
+  @doc "Return host ports that need a gRPC-aware listener (multiple gRPC services sharing a port)."
+  def grpc_listener_ports(%DrawbridgeCore.Config{} = config) do
+    config.services
+    |> Map.values()
+    |> Enum.filter(&(&1.protocol == :grpc))
+    |> Enum.group_by(fn svc -> svc.ports |> hd() |> elem(0) end)
+    |> Enum.filter(fn {_port, svcs} -> length(svcs) > 1 end)
     |> Enum.to_list()
   end
 
