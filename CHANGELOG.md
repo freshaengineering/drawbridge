@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- TUI keyboard navigation — `j`/`k` to select services, `b`/`s`/`r` to boot/stop/restart, `q` to quit, `?` for help overlay
+- TUI dependency graph — ASCII visualization of service `depends_on` relationships below the service table
+- TUI flash messages — brief confirmation when triggering service actions
+- InputReader GenServer — raw-mode stdin reader replacing `Process.sleep(:infinity)` blocking
+
 ## [0.2.0] - 2026-03-23
 
 ### Added
