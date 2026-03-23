@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PostgreSQL wire protocol routing by database name — multiple PG services share port 5432, routed by database extracted from StartupMessage
+- SSLRequest denial (`N` response) for PG-aware listeners, client retries with plain StartupMessage
+- `database` field in service config for PG database-routed services
+- Fallback to port-based routing when database name doesn't match any service
+
 ## [0.2.0] - 2026-03-23
 
 ### Added

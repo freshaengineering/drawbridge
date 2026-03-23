@@ -58,16 +58,26 @@ defmodule DrawbridgeProxy.ListenerSupervisor do
   Dynamically start a port-based listener for a service.
   Called at runtime when ServiceManager registers a service with a dedicated port.
   """
-  @spec start_port_listener(atom() | String.t(), non_neg_integer()) ::
+  @spec start_port_listener(atom() | String.t(), non_neg_integer(), keyword()) ::
           {:ok, pid()} | {:error, term()}
-  def start_port_listener(service_name, port) do
+  def start_port_listener(service_name, port, opts \\ []) do
+    pg_aware = Keyword.get(opts, :pg_aware, false)
+    listener_id = if pg_aware, do: {:pg_listener, port}, else: {:port_listener, service_name}
+
+    handler_opts =
+      if pg_aware do
+        [pg_aware: true, service_name: service_name]
+      else
+        [service_name: service_name]
+      end
+
     child_spec =
       :ranch.child_spec(
-        {:port_listener, service_name},
+        listener_id,
         :ranch_tcp,
         %{socket_opts: [port: port]},
         DrawbridgeProxy.PortHandler,
-        service_name: service_name
+        handler_opts
       )
 
     case Supervisor.start_child(__MODULE__, child_spec) do
