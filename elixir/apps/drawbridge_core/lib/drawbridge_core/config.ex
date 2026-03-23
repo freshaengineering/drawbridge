@@ -172,10 +172,15 @@ defmodule DrawbridgeCore.Config do
   end
 
   defp validate_no_duplicate_host_ports(services) do
-    # Services with a `database` field share a port and are disambiguated at the
-    # protocol level, so only non-database services can collide.
-    {db_services, plain_services} =
-      Enum.split_with(services, fn {_, svc} -> svc.database != nil end)
+    # Services with a `database` field or `protocol: :grpc` share a port and are
+    # disambiguated at the protocol level, so only plain services can collide.
+    {shared_services, plain_services} =
+      Enum.split_with(services, fn {_, svc} ->
+        svc.database != nil or svc.protocol == :grpc
+      end)
+
+    {db_services, _grpc_services} =
+      Enum.split_with(shared_services, fn {_, svc} -> svc.database != nil end)
 
     # Plain (non-database) services must have unique host ports
     plain_ports =
