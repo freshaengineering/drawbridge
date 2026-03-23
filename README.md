@@ -19,6 +19,7 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | DNS resolver management | **Done** | Auto-configures `*.dev.local` via `/etc/resolver/` |
 | Apple Container runtime | **Done** | Lightweight VMs via Virtualization.framework, not Docker |
 | Swift-Erlang interop | **Partial** | Container agent joins BEAM cluster via swift-erlang-actor-system |
+| GraphQL API + MCP server | **Done** | AI agent integration via Absinthe GraphQL and MCP stdio protocol |
 | L7 protocol inspection | Planned | HTTP/gRPC/Kafka/Postgres wire protocol decoding |
 | OpenTelemetry / Datadog | Planned | Local distributed tracing and log aggregation |
 | TUI | Planned | Terminal UI for service topology and traffic flow |
@@ -327,7 +328,8 @@ drawbridge/
 │   └── apps/
 │       ├── drawbridge_proxy/   # Ranch-based L4 proxy (SNI + port routing)
 │       ├── drawbridge_core/    # Config, state machine, Swift bridge, certs, DNS
-│       └── drawbridge_cli/     # Mix tasks (up, down, status, pull, init)
+│       ├── drawbridge_api/     # GraphQL API (Absinthe) + MCP server
+│       └── drawbridge_cli/     # Mix tasks (up, down, status, pull, init, api, mcp)
 ├── swift/
 │   └── Sources/DrawbridgeAgent/  # Apple Container lifecycle manager
 └── config/
@@ -354,7 +356,7 @@ Known risks:
 - [ ] OpenTelemetry + Datadog local collector for distributed tracing
 - [ ] TUI for service topology, traffic flow, and log tailing
 - [ ] `drawbridge.lock` for reproducible image version pinning
-- [ ] AI agent API — expose proxy state and wire protocol data to coding agents
+- [x] AI agent API — GraphQL + MCP server for coding agent integration
 
 ## Credits
 

@@ -14,6 +14,8 @@ defmodule DrawbridgeCli do
       ["status" | _] -> Mix.Tasks.Drawbridge.Status.run([])
       ["pull" | rest] -> Mix.Tasks.Drawbridge.Pull.run(rest)
       ["init" | _] -> Mix.Tasks.Drawbridge.Init.run([])
+      ["api" | rest] -> Mix.Tasks.Drawbridge.Api.run(rest)
+      ["mcp" | rest] -> Mix.Tasks.Drawbridge.Mcp.run(rest)
       ["version" | _] -> IO.puts("drawbridge #{version()}")
       _ -> usage()
     end
@@ -33,6 +35,8 @@ defmodule DrawbridgeCli do
       drawbridge status
       drawbridge pull [service...] [--all]
       drawbridge init
+      drawbridge api [--port 4001] [--config path]
+      drawbridge mcp [--config path]
       drawbridge version
     """)
   end
