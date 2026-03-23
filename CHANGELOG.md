@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- L7 protocol-aware proxy: detect HTTP/1.1, Postgres, Redis, and Kafka wire protocols on first client chunk
+- Protocol behaviour (`DrawbridgeProxy.Protocol`) with `detect/1` callback for pluggable parsers
+- ETS-backed `ProtocolRegistry` for storing per-connection protocol metadata (keyed by service + connection ref)
+- Optional `protocol` hint field on `Config.Service` for explicit protocol declaration
+- SniHandler records `:tls` protocol with SNI hostname; PortHandler runs full protocol detection on raw TCP
 - TUI dashboard via Owl LiveScreen — live-updating service table with color-coded states, uptime, and connection counts
 - `drawbridge tui` command and `drawbridge up --tui` flag
 - New `drawbridge_tui` umbrella app with ServiceSubscriber (1s polling) and Dashboard renderer

@@ -5,6 +5,7 @@ defmodule DrawbridgeProxy.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      DrawbridgeProxy.ProtocolRegistry,
       DrawbridgeProxy.ListenerSupervisor
     ]
 
