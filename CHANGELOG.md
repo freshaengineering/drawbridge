@@ -7,15 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-23
+
 ### Added
 
-- `drawbridge setup` command — one-time system configuration: generates CA + wildcard TLS certs, trusts CA in macOS keychain, configures DNS resolver. Idempotent, accepts `--domain` flag.
-- `drawbridge auth` command — auto-detects GHCR and ECR registries from config and authenticates via `gh auth token` / `aws ecr get-login-password`. Supports `--ghcr` and `--ecr` flags to target a specific registry.
-- `--local <service>` flag for `drawbridge up` — excludes services from orchestration while keeping their DNS hostnames pointed to 127.0.0.1, letting you run them from source
+- `drawbridge setup` command — one-time system configuration: generates CA + wildcard TLS certs, trusts CA in macOS keychain, configures DNS resolver. Idempotent, accepts `--domain` flag. ([#37](https://github.com/surgeventures/drawbridge/pull/37))
+- `drawbridge auth` command — auto-detects GHCR and ECR registries from config and authenticates via `gh auth token` / `aws ecr get-login-password`. Supports `--ghcr` and `--ecr` flags. ([#35](https://github.com/surgeventures/drawbridge/pull/35))
+- Container-to-host networking — `HostNetwork` module discovers Apple Container gateway IP and rewrites `*.dev.local` hostnames in container env vars so containers can reach host services without in-VM DNS. ([#38](https://github.com/surgeventures/drawbridge/pull/38))
+- `--local <service>` flag for `drawbridge up` — excludes services from orchestration while keeping their DNS hostnames pointed to 127.0.0.1, letting you run them from source. ([#33](https://github.com/surgeventures/drawbridge/pull/33))
 - `.env.drawbridge` generation — auto-creates a sourceable env file with the local service's configured environment variables
-- Org-wide example config (`config/examples/surgeventures.drawbridge.yml`) mapping the full B2C stack with private registry images (ghcr.io + ECR)
+- Org-wide config support — `drawbridge.yml` can reference a shared org config. Example config maps full B2C stack with ECR images.
 - `Config.exclude_services/2` and `Config.local_hostnames/2` for programmatic service filtering
 - `cpus` and `memory` fields on `Config.Service` for container resource limits (`--cpus`/`--memory` flags)
+
+### Fixed
+
+- Swift binary discovery from escript — resolves real path and looks for `drawbridge-agent` sibling. Supports `DRAWBRIDGE_SWIFT_BINARY` env var override. ([#34](https://github.com/surgeventures/drawbridge/pull/34))
+- Swift actor isolation error in pull progress callback
+- Flaky integration, JsonBridge progress, and TUI dashboard tests ([#39](https://github.com/surgeventures/drawbridge/pull/39))
 
 ## [0.3.0] - 2026-03-23
 
