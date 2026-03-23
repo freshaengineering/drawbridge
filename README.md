@@ -20,7 +20,7 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | Apple Container runtime | **Done** | Lightweight VMs via Virtualization.framework, not Docker |
 | Swift-Erlang interop | **Partial** | Container agent joins BEAM cluster via swift-erlang-actor-system |
 | GraphQL API + MCP server | **Done** | AI agent integration via Absinthe GraphQL and MCP stdio protocol |
-| L7 protocol inspection | Planned | HTTP/gRPC/Kafka/Postgres wire protocol decoding |
+| L7 protocol inspection | **Done** | HTTP/gRPC/Kafka/Postgres wire protocol decoding |
 | OpenTelemetry / Datadog | Planned | Local distributed tracing and log aggregation |
 | TUI | **Done** | Terminal UI for service topology and traffic flow |
 
@@ -353,7 +353,7 @@ Known risks:
 ## Roadmap
 
 - [ ] End-to-end integration test on macOS 26
-- [ ] L7 protocol-aware proxy (HTTP/gRPC/Kafka/Postgres wire protocol inspection)
+- [x] L7 protocol-aware proxy (HTTP/gRPC/Kafka/Postgres wire protocol inspection)
 - [ ] OpenTelemetry + Datadog local collector for distributed tracing
 - [x] TUI for service topology, traffic flow, and log tailing
 - [ ] `drawbridge.lock` for reproducible image version pinning
