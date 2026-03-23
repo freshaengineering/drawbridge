@@ -23,7 +23,9 @@ On-demand local dev stack proxy for macOS. Hit an endpoint, the required contain
 | GraphQL API + MCP server | **Done** | AI agent integration via Absinthe GraphQL and MCP stdio protocol |
 | L7 protocol inspection | **Done** | HTTP/gRPC/Kafka/Postgres wire protocol decoding |
 | OpenTelemetry / Datadog | **Done** | Telemetry events + OTel spans for proxy and service lifecycle |
-| TUI | **Done** | Terminal UI for service topology and traffic flow |
+| Fallback page | **Done** | 503 HTML page with service list for unknown SNI hostnames |
+| Image pull progress | **Done** | Real-time layer download progress streamed to TUI |
+| TUI | **Done** | Terminal UI with keyboard navigation, dependency graph, flash messages |
 
 ## How it works
 
@@ -354,7 +356,7 @@ drawbridge/
 
 ## Status
 
-Experimental. Pre-alpha. The core proxy and state management are implemented and tested (135 tests). Integration with Apple Container requires macOS 26.
+Experimental. Pre-alpha. The core proxy and state management are implemented and tested (164 tests). Integration with Apple Container requires macOS 26.
 
 Known risks:
 - Apple Container is pre-1.0 — API may break between minor versions
