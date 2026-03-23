@@ -142,6 +142,18 @@ defmodule DrawbridgeProxy.PortHandler do
     else
       Logger.info("[PortHandler] gRPC received #{byte_size(new_buf)} bytes")
 
+      # HTTP/2 requires a SETTINGS ack before client sends HEADERS.
+      # Send our own SETTINGS + ack their SETTINGS so the client proceeds.
+      data =
+        if not Map.get(data, :h2_settings_sent, false) and byte_size(new_buf) >= 24 do
+          settings_frame = <<0::24, 4::8, 0::8, 0::32>>
+          settings_ack = <<0::24, 4::8, 1::8, 0::32>>
+          transport.send(socket, settings_frame <> settings_ack)
+          Map.put(data, :h2_settings_sent, true)
+        else
+          data
+        end
+
       case DrawbridgeProxy.Protocol.Http2.extract_authority(new_buf) do
         {:ok, authority} ->
           Logger.info("[PortHandler] gRPC routing authority=#{authority}")
