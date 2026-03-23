@@ -62,6 +62,12 @@ actor ContainerManager {
         }
         print("[ContainerManager] \(name): step 1/3 — pull complete")
 
+        // Remove stale container if it exists (e.g. from a previous crashed run)
+        if let existing = try? await runtime.inspect(name: name) {
+            print("[ContainerManager] \(name): removing stale container (state=\(existing.state.rawValue))")
+            try? await runtime.remove(name: name)
+        }
+
         print("[ContainerManager] \(name): step 2/3 — starting container (ports: \(mappings.map { "\($0.hostPort):\($0.containerPort)" }))")
         var info = try await runtime.run(name: name, image: image, ports: mappings, env: env)
         print("[ContainerManager] \(name): step 2/3 — container started, state=\(info.state.rawValue)")
