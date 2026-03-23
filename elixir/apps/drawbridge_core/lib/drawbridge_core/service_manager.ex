@@ -262,10 +262,14 @@ defmodule DrawbridgeCore.ServiceManager do
 
   defp via(name), do: {:via, Registry, {@registry, {:name, name}}}
 
-  defp lookup(name) do
-    case Registry.lookup(@registry, {:name, name}) do
-      [{pid, _}] -> {:ok, pid}
-      [] -> :error
+  defp lookup(name_or_hostname) do
+    case Registry.lookup(@registry, {:name, name_or_hostname}) do
+      [{pid, _}] ->
+        {:ok, pid}
+
+      [] ->
+        # Fall back to hostname lookup (SNI handler passes hostnames)
+        DrawbridgeCore.ServiceRegistry.lookup_by_hostname(name_or_hostname)
     end
   end
 
