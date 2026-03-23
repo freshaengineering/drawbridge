@@ -76,10 +76,24 @@ defmodule Mix.Tasks.Drawbridge.Auth do
     region = registry |> String.split(".") |> Enum.at(3, "us-east-1")
     IO.puts("Authenticating to ECR (#{region})...")
 
-    run_shell(
-      "aws ecr get-login-password --region #{region} | docker login --username AWS --password-stdin #{registry}",
-      registry
-    )
+    # Auth both docker and Apple Container CLI
+    docker_result =
+      run_shell(
+        "aws ecr get-login-password --region #{region} | docker login --username AWS --password-stdin #{registry}",
+        "#{registry} (docker)"
+      )
+
+    container_result =
+      if System.find_executable("container") do
+        run_shell(
+          "aws ecr get-login-password --region #{region} | container registry login --username AWS --password-stdin #{registry}",
+          "#{registry} (container)"
+        )
+      else
+        :ok
+      end
+
+    if docker_result == :ok and container_result == :ok, do: :ok, else: :error
   end
 
   defp run_shell(cmd, label) do
