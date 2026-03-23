@@ -76,6 +76,7 @@ defmodule DrawbridgeProxy.SniHandler do
       true ->
         case DrawbridgeProxy.TlsParser.parse_client_hello(new_buf) do
           {:ok, hostname} ->
+            Logger.info("[SniHandler] TLS connection for #{hostname}")
             do_sni_lookup(hostname, new_buf, %{data | buffer: new_buf})
 
           {:error, :incomplete} ->
