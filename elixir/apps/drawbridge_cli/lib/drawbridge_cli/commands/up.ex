@@ -45,7 +45,7 @@ defmodule Mix.Tasks.Drawbridge.Up do
     Logger.info("[Drawbridge] TLS certs ready at #{certs.cert}")
 
     unless opts[:no_dns] do
-      DrawbridgeCore.DnsManager.setup(config.domain)
+      DrawbridgeCore.DnsManager.setup_hosts(config)
     end
 
     if local_services != [] do
