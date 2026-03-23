@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `drawbridge auth` command — auto-detects GHCR and ECR registries from config and authenticates via `gh auth token` / `aws ecr get-login-password`. Supports `--ghcr` and `--ecr` flags to target a specific registry.
 - `--local <service>` flag for `drawbridge up` — excludes services from orchestration while keeping their DNS hostnames pointed to 127.0.0.1, letting you run them from source
 - `.env.drawbridge` generation — auto-creates a sourceable env file with the local service's configured environment variables
 - Org-wide example config (`config/examples/surgeventures.drawbridge.yml`) mapping the full B2C stack with private registry images (ghcr.io + ECR)
