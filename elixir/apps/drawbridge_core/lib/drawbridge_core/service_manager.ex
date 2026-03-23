@@ -121,6 +121,7 @@ defmodule DrawbridgeCore.ServiceManager do
 
   @impl true
   def handle_call({:request_connection, _caller_pid}, _from, %{state: :running} = s) do
+    Logger.info("[ServiceManager] #{s.service.name}: already running, connecting to #{s.ip}")
     s = cancel_idle_timer(s)
     s = %{s | active_connections: s.active_connections + 1}
     {_, first_container_port} = hd(s.ports)
@@ -130,6 +131,12 @@ defmodule DrawbridgeCore.ServiceManager do
   def handle_call({:request_connection, _caller_pid}, from, %{state: container_state} = s)
       when container_state in [:stopped, :not_pulled] do
     ref = make_ref()
+
+    Logger.info(
+      "[ServiceManager] #{s.service.name}: connection requested, booting container (was #{container_state})"
+    )
+
+    Logger.info("[ServiceManager] #{s.service.name}: image=#{s.service.image}")
     DrawbridgeCore.Telemetry.emit_boot_start(s.service.name, s.service.image)
 
     s = %{
@@ -145,6 +152,11 @@ defmodule DrawbridgeCore.ServiceManager do
 
   def handle_call({:request_connection, _caller_pid}, from, %{state: :booting} = s) do
     ref = make_ref()
+
+    Logger.info(
+      "[ServiceManager] #{s.service.name}: already booting, queuing connection (#{length(s.waiters) + 1} waiting)"
+    )
+
     s = %{s | waiters: [{from, ref} | s.waiters]}
     {:noreply, s}
   end
@@ -276,22 +288,32 @@ defmodule DrawbridgeCore.ServiceManager do
   defp start_container_async(service) do
     self_pid = self()
     resolved_env = DrawbridgeCore.HostNetwork.resolve_env_for_container(service.env)
+    timeout = (service.boot_timeout + 5) * 1_000
+
+    Logger.info("[ServiceManager] #{service.name}: starting container (timeout=#{timeout}ms)")
+    Logger.info("[ServiceManager] #{service.name}: pulling and starting #{service.image}")
 
     Task.start(fn ->
       result =
         swift_bridge().call_agent(
           {:start, service.name, service.image, service.ports, resolved_env},
-          (service.boot_timeout + 5) * 1_000
+          timeout
         )
 
       case result do
         {:ok, %{ip: ip, ports: ports}} ->
+          Logger.info("[ServiceManager] #{service.name}: container ready at #{ip}")
           send(self_pid, {:container_ready, service.name, ip, ports})
 
         {:error, reason} ->
+          Logger.error(
+            "[ServiceManager] #{service.name}: container start failed: #{inspect(reason)}"
+          )
+
           send(self_pid, {:container_error, service.name, reason})
 
         other ->
+          Logger.error("[ServiceManager] #{service.name}: unexpected result: #{inspect(other)}")
           send(self_pid, {:container_error, service.name, {:unexpected, other}})
       end
     end)
