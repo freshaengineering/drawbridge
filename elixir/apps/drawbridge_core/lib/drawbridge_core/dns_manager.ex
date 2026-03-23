@@ -76,24 +76,19 @@ defmodule DrawbridgeCore.DnsManager do
   end
 
   defp write_with_sudo(path, content) do
-    # Use tee with sudo to write to privileged paths
-    port =
-      Port.open({:spawn, "sudo tee #{path}"}, [
-        :binary,
-        :exit_status,
-        :use_stdio
-      ])
+    # Write content to a temp file, then sudo mv it into place
+    tmp = Path.join(System.tmp_dir!(), "drawbridge_resolver_#{:rand.uniform(999_999)}")
+    File.write!(tmp, content)
 
-    Port.command(port, content)
-    Port.close(port)
+    case System.cmd("sudo", ["cp", tmp, path], stderr_to_stdout: true) do
+      {_, 0} ->
+        File.rm(tmp)
+        :ok
 
-    # Give it a moment to flush
-    Process.sleep(100)
-
-    if File.exists?(path) do
-      :ok
-    else
-      {:error, :write_failed}
+      {output, code} ->
+        File.rm(tmp)
+        Logger.error("[DnsManager] sudo cp failed (exit #{code}): #{output}")
+        {:error, :write_failed}
     end
   end
 end
