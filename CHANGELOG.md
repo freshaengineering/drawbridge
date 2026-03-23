@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Project-level CLAUDE.md for AI agent development context
+- Example configs: minimal, node-fullstack, elixir-phoenix, microservices
+
 ### Fixed
 
 - Reset idle timer on every relayed data packet, not just on connection release — long-running streaming connections now properly keep services alive
