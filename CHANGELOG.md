@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TUI dependency graph — ASCII visualization of service `depends_on` relationships below the service table
 - TUI flash messages — brief confirmation when triggering service actions
 - InputReader GenServer — raw-mode stdin reader replacing `Process.sleep(:infinity)` blocking
+- Fallback page for unknown SNI hostnames — TLS-terminates with local CA cert and returns a 503 HTML page listing configured services instead of silently dropping connections
+- Project-level CLAUDE.md for AI agent development context
+- Example configs: minimal, node-fullstack, elixir-phoenix, microservices
+
+### Fixed
+
+- Reset idle timer on every relayed data packet, not just on connection release — long-running streaming connections now properly keep services alive
 
 ## [0.2.0] - 2026-03-23
 

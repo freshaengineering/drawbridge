@@ -127,6 +127,36 @@ defmodule DrawbridgeCore.ServiceManagerTest do
     assert {:error, :service_not_found} = ServiceManager.request_connection("no-such-service-xyz")
   end
 
+  test "ack resets idle timer while running", %{svc: svc} do
+    pid = start_manager(svc)
+    send(pid, {:container_ready, svc.name, "127.0.0.1", svc.ports})
+    Process.sleep(20)
+
+    # Request + release to start idle timer
+    {:ok, _} = ServiceManager.request_connection(svc.name, 1_000)
+    ServiceManager.release_connection(svc.name)
+    Process.sleep(10)
+
+    # Grab the timer ref before ack
+    %{idle_timer: timer_before} = :sys.get_state(pid)
+    assert timer_before != nil
+
+    # ack should reset the timer (new ref)
+    ServiceManager.ack(svc.name)
+    Process.sleep(10)
+    %{idle_timer: timer_after} = :sys.get_state(pid)
+    assert timer_after != nil
+    assert timer_after != timer_before
+  end
+
+  test "ack is ignored when not running", %{svc: svc} do
+    _pid = start_manager(svc)
+    # Service is :not_pulled, ack should be a no-op (no crash)
+    assert :ok = ServiceManager.ack(svc.name)
+    info = ServiceManager.get_state(svc.name)
+    assert info.state == :not_pulled
+  end
+
   test "running state returns immediately on request_connection", %{svc: svc} do
     pid = start_manager(svc)
     send(pid, {:container_ready, svc.name, "192.168.1.1", svc.ports})
