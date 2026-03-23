@@ -4,6 +4,7 @@ defmodule DrawbridgeCore.JsonBridgeTest do
   alias DrawbridgeCore.JsonBridge
 
   @moduletag :json_bridge
+  @moduletag :spawn_process
 
   defp mock_script_path do
     Path.join([__DIR__, "..", "support", "mock_swift_agent.exs"])
