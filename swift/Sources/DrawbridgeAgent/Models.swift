@@ -49,10 +49,16 @@ struct ContainerInspectEntry: Decodable, Sendable {
 
     struct InspectNetwork: Decodable, Sendable {
         let network: String?
+        let ipv4Address: String?
         let ipAddress: String?
-        let ip: String?
 
-        var effectiveIP: String? { ipAddress ?? ip }
+        /// ipv4Address comes as "192.168.64.8/24" — strip the CIDR suffix
+        var effectiveIP: String? {
+            if let addr = ipv4Address ?? ipAddress {
+                return addr.split(separator: "/").first.map(String.init)
+            }
+            return nil
+        }
     }
 
     struct InspectConfig: Decodable, Sendable {

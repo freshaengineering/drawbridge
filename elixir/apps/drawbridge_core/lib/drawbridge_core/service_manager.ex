@@ -317,8 +317,10 @@ defmodule DrawbridgeCore.ServiceManager do
         )
 
       case result do
-        {:ok, %{ip: ip, ports: ports}} ->
-          Logger.info("[ServiceManager] #{service.name}: container ready at #{ip}")
+        {:ok, info} when is_map(info) ->
+          ip = info["ipAddress"] || info["ip"] || info[:ip]
+          ports = info["ports"] || info[:ports] || []
+          Logger.info("[ServiceManager] #{service.name}: container ready at #{ip || "unknown"}")
           send(self_pid, {:container_ready, service.name, ip, ports})
 
         {:error, reason} ->
