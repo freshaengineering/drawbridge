@@ -1,0 +1,14 @@
+# Minimal drawbridge config — single service + database
+domain: dev.local
+idle_timeout: 300
+
+services:
+  postgres:
+    image: postgres:16
+    hostname: postgres.dev.local
+    ports:
+      - "5432:5432"
+    env:
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: myapp_dev
+    idle_timeout: 1800
