@@ -114,7 +114,8 @@ defmodule DrawbridgeCore.CertManager do
   def install_ca_trust(ca_cert_path) do
     Logger.info("[CertManager] Installing CA in macOS keychain (may require sudo)...")
 
-    case System.cmd("security", [
+    case System.cmd("sudo", [
+           "security",
            "add-trusted-cert",
            "-d",
            "-r",
