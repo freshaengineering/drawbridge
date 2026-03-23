@@ -72,7 +72,7 @@ Add to your project's `.mise.toml` (or global `~/.config/mise/config.toml`):
 
 ```toml
 [tools]
-"ubi:surgeventures/drawbridge" = "latest"
+"github:surgeventures/drawbridge" = "latest"
 ```
 
 Then:
@@ -84,7 +84,7 @@ mise install
 Or install directly:
 
 ```bash
-mise use -g "ubi:surgeventures/drawbridge@latest"
+mise use -g "github:surgeventures/drawbridge@latest"
 ```
 
 This pulls the latest release binary from GitHub and adds `drawbridge` to your PATH via mise.
