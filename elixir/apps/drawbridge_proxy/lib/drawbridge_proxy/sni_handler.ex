@@ -378,24 +378,60 @@ defmodule DrawbridgeProxy.SniHandler do
     |> String.replace("\"", "&quot;")
   end
 
-  defp do_connect_backend(ip, port, initial_bytes, data) do
+  defp do_connect_backend(ip, port, _initial_bytes, data) do
     ip_addr = parse_ip(ip)
 
-    case :gen_tcp.connect(
-           ip_addr,
-           port,
-           [:binary, active: :once, nodelay: true],
-           @backend_connect_timeout
-         ) do
-      {:ok, backend_socket} ->
-        # Forward the buffered ClientHello verbatim so the backend does TLS handshake
-        :ok = :gen_tcp.send(backend_socket, initial_bytes)
-        :ok = data.transport.setopts(data.socket, active: :once)
-        Logger.debug("[SniHandler] relaying #{data.service_name} -> #{ip}:#{port}")
-        {:next_state, :relaying, %{data | backend_socket: backend_socket}}
+    # Terminate TLS on the proxy side (backends are plain HTTP)
+    paths = DrawbridgeCore.CertManager.cert_paths()
+
+    ssl_opts = [
+      certfile: paths.cert,
+      keyfile: paths.key,
+      versions: [:"tlsv1.2", :"tlsv1.3"]
+    ]
+
+    case :ssl.handshake(data.socket, ssl_opts, 5_000) do
+      {:ok, ssl_socket} ->
+        # Connect plain TCP to the backend
+        case :gen_tcp.connect(
+               ip_addr,
+               port,
+               [:binary, active: :once, nodelay: true],
+               @backend_connect_timeout
+             ) do
+          {:ok, backend_socket} ->
+            :ok = :ssl.setopts(ssl_socket, active: :once)
+
+            Logger.info(
+              "[SniHandler] TLS terminated, relaying #{data.service_name} → #{ip}:#{port}"
+            )
+
+            {:next_state, :relaying,
+             %{
+               data
+               | socket: ssl_socket,
+                 transport: :ssl,
+                 backend_socket: backend_socket,
+                 msg_ok: :ssl,
+                 msg_closed: :ssl_closed,
+                 msg_error: :ssl_error
+             }}
+
+          {:error, reason} ->
+            Logger.warning(
+              "[SniHandler] backend connect #{ip}:#{port} failed: #{inspect(reason)}"
+            )
+
+            :ssl.close(ssl_socket)
+
+            if data.service_name,
+              do: DrawbridgeCore.ServiceManager.release_connection(data.service_name)
+
+            {:stop, :normal, %{data | socket: nil}}
+        end
 
       {:error, reason} ->
-        Logger.warning("[SniHandler] backend connect #{ip}:#{port} failed: #{inspect(reason)}")
+        Logger.warning("[SniHandler] TLS handshake failed: #{inspect(reason)}")
 
         if data.service_name,
           do: DrawbridgeCore.ServiceManager.release_connection(data.service_name)
