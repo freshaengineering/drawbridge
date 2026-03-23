@@ -9,9 +9,17 @@ defmodule DrawbridgeCore.Config.Service do
     :boot_timeout,
     :health_check,
     :depends_on,
+    image_digest: nil,
     env: %{},
     tls_backend: false
   ]
+
+  @doc "Returns `image@digest` when a digest is pinned, otherwise the bare image tag."
+  def resolved_image(%__MODULE__{image_digest: digest, image: image}) when is_binary(digest) do
+    "#{image}@#{digest}"
+  end
+
+  def resolved_image(%__MODULE__{image: image}), do: image
 end
 
 defmodule DrawbridgeCore.Config do

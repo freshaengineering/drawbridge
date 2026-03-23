@@ -19,6 +19,8 @@ defmodule Mix.Tasks.Drawbridge.Pull do
 
     case DrawbridgeCore.Config.load(config_path) do
       {:ok, config} ->
+        config = DrawbridgeCore.Lockfile.load_and_overlay(config, config_path)
+
         services_to_pull =
           if opts[:all] || positional == [] do
             Map.values(config.services)
@@ -31,9 +33,10 @@ defmodule Mix.Tasks.Drawbridge.Pull do
           end
 
         Enum.each(services_to_pull, fn svc ->
-          Mix.shell().info("Pulling #{svc.image}...")
+          image = DrawbridgeCore.Config.Service.resolved_image(svc)
+          Mix.shell().info("Pulling #{image}...")
 
-          case DrawbridgeCore.SwiftBridge.call_agent({:pull, svc.image}) do
+          case DrawbridgeCore.SwiftBridge.call_agent({:pull, image}) do
             {:ok, _} ->
               Mix.shell().info("  #{svc.name}: pulled")
 

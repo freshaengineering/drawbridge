@@ -13,6 +13,7 @@ defmodule DrawbridgeCli do
       ["down" | rest] -> Mix.Tasks.Drawbridge.Down.run(rest)
       ["status" | _] -> Mix.Tasks.Drawbridge.Status.run([])
       ["pull" | rest] -> Mix.Tasks.Drawbridge.Pull.run(rest)
+      ["lock" | rest] -> Mix.Tasks.Drawbridge.Lock.run(rest)
       ["init" | _] -> Mix.Tasks.Drawbridge.Init.run([])
       ["version" | _] -> IO.puts("drawbridge #{version()}")
       _ -> usage()
@@ -32,6 +33,7 @@ defmodule DrawbridgeCli do
       drawbridge down [--config path] [--keep-dns]
       drawbridge status
       drawbridge pull [service...] [--all]
+      drawbridge lock [--update] [--config path]
       drawbridge init
       drawbridge version
     """)
