@@ -76,7 +76,12 @@ actor CommandServer {
                     image: image,
                     ports: cmd.ports ?? [],
                     env: cmd.env ?? [:]
-                )
+                ) { [weak self] progressLine in
+                    guard let self = self else { return }
+                    let progress = self.parsePullProgress(line: progressLine, image: image)
+                    let progressJson = self.progressResponse(id: id, data: progress)
+                    self.writeLine(progressJson)
+                }
                 writeLine(try okResponse(id: id, data: info))
 
             case "stop":

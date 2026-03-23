@@ -34,7 +34,7 @@ defmodule DrawbridgeCore.ServiceManager do
   end
 
   @doc "Request a connection to a service. Returns {:ok, {ip, port}} or {:wait, ref} or {:error, reason}."
-  def request_connection(service_name, timeout \\ 300_000) do
+  def request_connection(service_name, timeout \\ :infinity) do
     case lookup(service_name) do
       {:ok, pid} -> GenServer.call(pid, {:request_connection, self()}, timeout)
       :error -> {:error, :service_not_found}
@@ -289,11 +289,13 @@ defmodule DrawbridgeCore.ServiceManager do
     self_pid = self()
     resolved_env = DrawbridgeCore.HostNetwork.resolve_env_for_container(service.env)
     needs_ecr = DrawbridgeCore.ImageResolver.needs_resolution?(service.image)
-    # ECR images need extra time for tag resolution + first pull
-    timeout = if needs_ecr, do: 300_000, else: (service.boot_timeout + 5) * 1_000
+    # ECR images: no timeout (first pull can take ages). Non-ECR: use configured boot_timeout.
+    timeout = if needs_ecr, do: :infinity, else: (service.boot_timeout + 5) * 1_000
+
+    timeout_label = if timeout == :infinity, do: "no limit", else: "#{div(timeout, 1000)}s"
 
     Logger.info(
-      "[ServiceManager] #{service.name}: starting container (timeout=#{div(timeout, 1000)}s#{if needs_ecr, do: ", ECR resolve+pull", else: ""})"
+      "[ServiceManager] #{service.name}: starting container (timeout=#{timeout_label}#{if needs_ecr, do: ", ECR resolve+pull", else: ""})"
     )
 
     Task.start(fn ->
