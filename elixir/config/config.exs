@@ -4,7 +4,8 @@ config :drawbridge_core,
   config_file: "drawbridge.yml",
   data_dir: "~/.drawbridge",
   default_idle_timeout: 300,
-  max_containers: 8
+  max_containers: 8,
+  swift_bridge: DrawbridgeCore.JsonBridge
 
 config :drawbridge_proxy,
   tls_port: 443,
