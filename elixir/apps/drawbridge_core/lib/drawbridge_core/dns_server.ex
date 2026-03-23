@@ -14,6 +14,27 @@ defmodule DrawbridgeCore.DnsServer do
   @default_port 53
   @default_ip "192.168.64.1"
 
+  @dns_helper_script """
+  #!/usr/bin/env python3
+  import socket,struct,sys
+  bind_ip=sys.argv[1];port=int(sys.argv[2]);domain=sys.argv[3].lower();answer_ip=sys.argv[4]
+  s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind((bind_ip,port))
+  print("OK",flush=True)
+  ip_bytes=bytes(int(x) for x in answer_ip.split("."))
+  while True:
+      data,addr=s.recvfrom(512)
+      if len(data)<12:continue
+      tid=data[:2];i=12;labels=[]
+      while i<len(data) and data[i]!=0:
+          n=data[i];labels.append(data[i+1:i+1+n].decode());i+=1+n
+      i+=1;qname=".".join(labels).lower()
+      if not(qname==domain or qname.endswith("."+domain)):
+          s.sendto(tid+b"\\x84\\x03"+b"\\x00"*8,addr);continue
+      qsection=data[12:i+4]
+      ans=b"\\xc0\\x0c\\x00\\x01\\x00\\x01\\x00\\x00\\x00\\x3c\\x00\\x04"+ip_bytes
+      s.sendto(tid+b"\\x84\\x00\\x00\\x01\\x00\\x01\\x00\\x00\\x00\\x00"+qsection+ans,addr)
+  """
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -24,44 +45,42 @@ defmodule DrawbridgeCore.DnsServer do
     domain = Keyword.get(opts, :domain, "dev.local")
     answer_ip = Keyword.get(opts, :answer_ip, @default_ip)
 
-    helper_script = Path.join(:code.priv_dir(:drawbridge_core), "dns_helper.py")
+    # Write the helper script to a temp file (escripts can't use priv_dir)
+    tmp_script = Path.join(System.tmp_dir!(), "drawbridge_dns_helper.py")
+    File.write!(tmp_script, @dns_helper_script)
+    File.chmod!(tmp_script, 0o755)
 
-    unless File.exists?(helper_script) do
-      Logger.warning("[DnsServer] Helper script not found at #{helper_script}")
-      {:ok, %{port_ref: nil}}
-    else
-      port_ref =
-        Port.open(
-          {:spawn_executable, System.find_executable("sudo")},
-          [
-            :binary,
-            :exit_status,
-            {:line, 256},
-            {:args, ["python3", helper_script, ip, to_string(port), domain, answer_ip]}
-          ]
+    port_ref =
+      Port.open(
+        {:spawn_executable, System.find_executable("sudo")},
+        [
+          :binary,
+          :exit_status,
+          {:line, 256},
+          {:args, ["python3", tmp_script, ip, to_string(port), domain, answer_ip]}
+        ]
+      )
+
+    receive do
+      {^port_ref, {:data, {:eol, "OK"}}} ->
+        Logger.info("[DnsServer] Listening on #{ip}:#{port} for *.#{domain} (sudo helper)")
+        {:ok, %{port_ref: port_ref}}
+
+      {^port_ref, {:data, {:eol, line}}} ->
+        Logger.warning("[DnsServer] Unexpected output: #{line}")
+        {:ok, %{port_ref: port_ref}}
+
+      {^port_ref, {:exit_status, code}} ->
+        Logger.warning(
+          "[DnsServer] Helper exited with code #{code}. Run drawbridge with sudo or configure DNS manually."
         )
 
-      receive do
-        {^port_ref, {:data, {:eol, "OK"}}} ->
-          Logger.info("[DnsServer] Listening on #{ip}:#{port} for *.#{domain} (sudo helper)")
-          {:ok, %{port_ref: port_ref}}
-
-        {^port_ref, {:data, {:eol, line}}} ->
-          Logger.warning("[DnsServer] Unexpected output: #{line}")
-          {:ok, %{port_ref: port_ref}}
-
-        {^port_ref, {:exit_status, code}} ->
-          Logger.warning(
-            "[DnsServer] Helper exited with code #{code}. Run drawbridge with sudo or configure DNS manually."
-          )
-
-          {:ok, %{port_ref: nil}}
-      after
-        10_000 ->
-          Logger.warning("[DnsServer] Helper timed out starting")
-          Port.close(port_ref)
-          {:ok, %{port_ref: nil}}
-      end
+        {:ok, %{port_ref: nil}}
+    after
+      10_000 ->
+        Logger.warning("[DnsServer] Helper timed out starting")
+        Port.close(port_ref)
+        {:ok, %{port_ref: nil}}
     end
   end
 
