@@ -61,6 +61,7 @@ defmodule DrawbridgeProxy.Protocol.Http2 do
 
         authority =
           Enum.find_value(headers, fn
+            {":authority", value} -> value
             {_action, ":authority", value} -> value
             _ -> nil
           end)
