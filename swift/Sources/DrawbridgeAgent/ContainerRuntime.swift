@@ -71,16 +71,19 @@ actor ContainerRuntime {
         cpus: Double? = nil,
         memory: String? = nil
     ) async throws -> ContainerInfo {
-        var args = ["run", "-d", "--name", name]
+        var args = ["run", "-d", "--name", name, "--entrypoint", "/bin/sh"]
 
-        // No port mapping — containers get their own IP on the NAT network
-        // and drawbridge connects to container-ip:container-port directly.
         for (k, v) in env {
             args += ["-e", "\(k)=\(v)"]
         }
         if let cpus { args += ["--cpus", String(cpus)] }
         if let memory { args += ["--memory", memory] }
         args.append(image)
+
+        // Get the image CMD and run it through a shell so `exec` and
+        // other shell builtins work (Apple Container runs CMD literally)
+        let cmd = try await getImageCmd(image: image)
+        args += ["-c", cmd]
 
         let portDesc = ports.map { "\($0.hostPort):\($0.containerPort)" }.joined(separator: ", ")
         print("[ContainerRuntime] \(name): running `container \(args.prefix(4).joined(separator: " "))...` ports=[\(portDesc)] env_count=\(env.count)")
@@ -183,6 +186,53 @@ actor ContainerRuntime {
         }
 
         return (stdout, stderr, proc.terminationStatus)
+    }
+
+    // MARK: - Image CMD resolution
+
+    /// Get the combined ENTRYPOINT + CMD from an image as a single shell command string.
+    /// Apple Container runs CMD as literal argv (no shell), so we need to join them
+    /// and run via `/bin/sh -c`.
+    func getImageCmd(image: String) async throws -> String {
+        let (stdout, _, code) = try await runCommand(["image", "inspect", image])
+        guard code == 0 else {
+            throw RuntimeError.commandFailed("image inspect \(image) failed")
+        }
+
+        let data = Data(stdout.trimmingCharacters(in: .whitespacesAndNewlines).utf8)
+
+        struct ImageInspect: Decodable {
+            let variants: [Variant]?
+            struct Variant: Decodable {
+                let config: VariantConfig?
+                struct VariantConfig: Decodable {
+                    let config: InnerConfig?
+                    struct InnerConfig: Decodable {
+                        let Entrypoint: [String]?
+                        let Cmd: [String]?
+                    }
+                }
+            }
+        }
+
+        if let images = try? JSONDecoder().decode([ImageInspect].self, from: data),
+           let variant = images.first?.variants?.first,
+           let cfg = variant.config?.config {
+
+            let entrypoint = cfg.Entrypoint ?? []
+            let cmd = cfg.Cmd ?? []
+            let full = entrypoint + cmd
+
+            if full.isEmpty {
+                throw RuntimeError.commandFailed("image \(image) has no CMD or ENTRYPOINT")
+            }
+
+            let joined = full.map { $0.contains(" ") ? "'\($0)'" : $0 }.joined(separator: " ")
+            print("[ContainerRuntime] Image CMD: \(joined)")
+            return joined
+        }
+
+        throw RuntimeError.commandFailed("cannot parse image inspect for \(image)")
     }
 
     // MARK: - Mapping
