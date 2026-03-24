@@ -154,7 +154,10 @@ defmodule DrawbridgeProxy.PortHandler do
           data
         end
 
-      case DrawbridgeProxy.Protocol.Http2.extract_authority(new_buf) do
+      result = DrawbridgeProxy.Protocol.Http2.extract_authority(new_buf)
+      Logger.info("[PortHandler] gRPC extract_authority result: #{inspect(result)}")
+
+      case result do
         {:ok, authority} ->
           Logger.info("[PortHandler] gRPC routing authority=#{authority}")
 
@@ -176,10 +179,11 @@ defmodule DrawbridgeProxy.PortHandler do
           {:keep_state, %{data | buffer: new_buf}}
 
         {:error, reason} ->
-          Logger.warning(
-            "[PortHandler] gRPC parse error: #{inspect(reason)}, buf=#{inspect(binary_part(new_buf, 0, min(byte_size(new_buf), 50)))}"
-          )
+          Logger.warning("[PortHandler] gRPC parse error: #{inspect(reason)}")
+          fallback_to_port_routing(%{data | buffer: new_buf})
 
+        other ->
+          Logger.warning("[PortHandler] gRPC unexpected result: #{inspect(other)}")
           fallback_to_port_routing(%{data | buffer: new_buf})
       end
     end
