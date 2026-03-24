@@ -25,6 +25,7 @@ defmodule DrawbridgeProxy.MixProject do
   defp deps do
     [
       {:ranch, "~> 2.2"},
+      {:hpax, "~> 1.0"},
       {:drawbridge_core, in_umbrella: true},
       {:opentelemetry_api, "~> 1.5"}
     ]
