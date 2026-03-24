@@ -56,17 +56,16 @@ defmodule DrawbridgeProxy.Protocol.Http2 do
 
     case HPAX.decode(payload, decode_table) do
       {:ok, headers, _updated_table} ->
+        require Logger
+        Logger.info("[Http2] HPAX decoded headers: #{inspect(headers, limit: 500)}")
+
         authority =
           Enum.find_value(headers, fn
-            {:store, ":authority", value} -> value
-            {:store_name, ":authority", value} -> value
-            {:no_store, ":authority", value} -> value
-            {:never_store, ":authority", value} -> value
+            {_action, ":authority", value} -> value
             _ -> nil
           end)
 
         if authority do
-          # Strip port suffix (e.g. "search.dev.local:50051" → "search.dev.local")
           hostname = authority |> String.split(":") |> hd()
           {:ok, hostname}
         else
