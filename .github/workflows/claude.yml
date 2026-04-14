@@ -68,6 +68,7 @@ jobs:
         uses: surgeventures/platform-tribe-actions/claude-code@v0
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          datadog_api_key: ${{ secrets.DD_API_KEY }}
           claude_decode_github_private_key: ${{ secrets.CLAUDE_DECODE_PRIVATE_KEY }}
           slack_token: ${{ secrets.SLACK_TOKEN_CLAUDE }}
           prompt: ${{ inputs.prompt }}
