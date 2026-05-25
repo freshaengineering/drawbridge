@@ -1,0 +1,65 @@
+version: 1
+generated_at: 2026-05-25T13:43:39Z
+internal:
+  - action: surgeventures/platform-tribe-actions/claude-code
+    refs:
+      - v0
+    occurrences:
+      v0:
+        .github/workflows/claude.yml:
+          - jobs.claude.steps.[5].uses
+trusted:
+  - action: actions/cache
+    refs:
+      - v4
+    occurrences:
+      v4:
+        .github/workflows/ci.yml:
+          - jobs.lint.steps.[2].uses
+          - jobs.test.steps.[2].uses
+        .github/workflows/claude.yml:
+          - jobs.claude.steps.[2].uses
+  - action: actions/checkout
+    refs:
+      - v4
+    occurrences:
+      v4:
+        .github/workflows/ci.yml:
+          - jobs.lint.steps.[0].uses
+          - jobs.test.steps.[0].uses
+          - jobs.check-version.steps.[0].uses
+          - jobs.build-escript.steps.[0].uses
+          - jobs.build-swift.steps.[0].uses
+          - jobs.release.steps.[0].uses
+        .github/workflows/claude.yml:
+          - jobs.claude.steps.[0].uses
+  - action: actions/download-artifact
+    refs:
+      - v4
+    occurrences:
+      v4:
+        .github/workflows/ci.yml:
+          - jobs.release.steps.[1].uses
+  - action: actions/upload-artifact
+    refs:
+      - v4
+    occurrences:
+      v4:
+        .github/workflows/ci.yml:
+          - jobs.build-escript.steps.[4].uses
+          - jobs.build-swift.steps.[2].uses
+external:
+  - action: erlef/setup-beam
+    refs:
+      - v1
+    occurrences:
+      v1:
+        .github/workflows/ci.yml:
+          - jobs.lint.steps.[1].uses
+          - jobs.test.steps.[1].uses
+          - jobs.build-escript.steps.[1].uses
+        .github/workflows/claude.yml:
+          - jobs.claude.steps.[1].uses
+local: []
+docker: []
+dynamic: []
