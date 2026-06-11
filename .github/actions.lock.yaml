@@ -1,19 +1,19 @@
 version: 1
-generated_at: 2026-05-25T13:43:39Z
+generated_at: 2026-06-11T15:38:03Z
 internal:
-  - action: surgeventures/platform-tribe-actions/claude-code
+  - action: freshaengineering/platform-tribe-actions/claude-code
     refs:
-      - v0
+      - ab2748a77021179b58af9a6d08e2e080a3a5bbbf
     occurrences:
-      v0:
+      ab2748a77021179b58af9a6d08e2e080a3a5bbbf:
         .github/workflows/claude.yml:
           - jobs.claude.steps.[5].uses
 trusted:
   - action: actions/cache
     refs:
-      - v4
+      - 0057852bfaa89a56745cba8c7296529d2fc39830
     occurrences:
-      v4:
+      0057852bfaa89a56745cba8c7296529d2fc39830:
         .github/workflows/ci.yml:
           - jobs.lint.steps.[2].uses
           - jobs.test.steps.[2].uses
@@ -21,9 +21,9 @@ trusted:
           - jobs.claude.steps.[2].uses
   - action: actions/checkout
     refs:
-      - v4
+      - 34e114876b0b11c390a56381ad16ebd13914f8d5
     occurrences:
-      v4:
+      34e114876b0b11c390a56381ad16ebd13914f8d5:
         .github/workflows/ci.yml:
           - jobs.lint.steps.[0].uses
           - jobs.test.steps.[0].uses
@@ -35,25 +35,25 @@ trusted:
           - jobs.claude.steps.[0].uses
   - action: actions/download-artifact
     refs:
-      - v4
+      - d3f86a106a0bac45b974a628896c90dbdf5c8093
     occurrences:
-      v4:
+      d3f86a106a0bac45b974a628896c90dbdf5c8093:
         .github/workflows/ci.yml:
           - jobs.release.steps.[1].uses
   - action: actions/upload-artifact
     refs:
-      - v4
+      - ea165f8d65b6e75b540449e92b4886f43607fa02
     occurrences:
-      v4:
+      ea165f8d65b6e75b540449e92b4886f43607fa02:
         .github/workflows/ci.yml:
           - jobs.build-escript.steps.[4].uses
           - jobs.build-swift.steps.[2].uses
 external:
   - action: erlef/setup-beam
     refs:
-      - v1
+      - fc68ffb90438ef2936bbb3251622353b3dcb2f93
     occurrences:
-      v1:
+      fc68ffb90438ef2936bbb3251622353b3dcb2f93:
         .github/workflows/ci.yml:
           - jobs.lint.steps.[1].uses
           - jobs.test.steps.[1].uses
